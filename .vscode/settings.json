@@ -1,0 +1,22 @@
+{
+    "python.pythonPath": ".venv/bin/python",
+    "python.venvPath": ".venv",
+    "python.envFile": "",
+    "python.terminal.activateEnvironment": true,
+    "python.linting.enabled": true,
+    "python.linting.pylamaEnabled": true,
+    "python.linting.pylamaPath": "pylava",
+    "python.linting.mypyEnabled": true,
+    "python.linting.mypyArgs": [],
+    "python.formatting.provider": "black",
+    "python.formatting.blackArgs": [
+        "--line-length=120",
+        "--target-version=py39",
+        "--skip-string-normalization"
+    ],
+    "editor.formatOnSave": true,
+    "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
+    "files.insertFinalNewline": true,
+    "files.eol": "\n"
+}
