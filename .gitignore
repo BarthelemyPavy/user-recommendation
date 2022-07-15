@@ -132,3 +132,4 @@ data/*.json
 
 okteto*
 .stignore
+__MACOSX*/

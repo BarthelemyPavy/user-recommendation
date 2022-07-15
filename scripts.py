@@ -1,5 +1,9 @@
 # pylava:ignore=C0415
 """Script definitions for `poetry run <command>`."""
+import os
+import requests, io, zipfile
+import gdown
+
 
 PACKAGE_NAME = "user_recommendation"
 
@@ -9,6 +13,7 @@ def test() -> None:
     import pytest
 
     pytest.main()
+
 
 def fmt() -> None:
     """Format the whole project with the autoformatter (black)."""
@@ -25,6 +30,7 @@ def fmt() -> None:
 
     subprocess.run(["black", "--config", "lintconfig.toml", PACKAGE_NAME], check=False)
     spinner.succeed()
+
 
 def lint() -> None:
     """Start the linter on the module with the linter to find out if the linter is happy or not >:(."""
@@ -68,3 +74,20 @@ def lint() -> None:
             spinner.succeed()
 
     sys.exit(status)
+
+
+def download_data() -> None:
+    """Download and unzip project data"""
+
+    url = "https://drive.google.com/u/0/uc?id=1CUcfl3JX8TNYABn2JRIPQozT0oqdqqOy&export=download"
+    dest_path = "data"
+    zip_name = "data.zip"
+
+    if not os.path.exists(dest_path):
+        os.makedirs(dest_path)
+
+    gdown.download(url=url, output=dest_path + "/" + zip_name, quiet=False, fuzzy=True)
+
+    with zipfile.ZipFile(dest_path + "/" + zip_name, 'r') as zip_ref:
+        zip_ref.extractall(dest_path)
+    os.remove(dest_path + "/" + zip_name)
