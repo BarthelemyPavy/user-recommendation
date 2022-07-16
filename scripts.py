@@ -1,7 +1,7 @@
 # pylava:ignore=C0415
 """Script definitions for `poetry run <command>`."""
 import os
-import requests, io, zipfile
+import zipfile
 import gdown
 
 
