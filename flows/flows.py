@@ -75,7 +75,7 @@ class GenerateTrainTestValFlow(FlowSpec):
         import yaml
 
         with open(self.config_path, "r") as stream:
-            self.config = yaml.load(stream)
+            self.config = yaml.load(stream, Loader=None)
         logger.info(f"Config parsed: {self.config}")
         self.next(self.preprocess_dataframes)
 

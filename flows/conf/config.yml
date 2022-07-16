@@ -1,0 +1,7 @@
+project_name: user_recommendation
+
+# Parameters used for training
+
+test_val_size: !!float 0.15
+# Rate between warm and cold data for test_val split, 0.7 means 70% of test_val data are cold start data
+split_cold_warm_size: !!float 0.5
