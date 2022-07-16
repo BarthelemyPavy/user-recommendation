@@ -44,7 +44,7 @@ def log_raise(
     Raises:
         Exception: systematically
     """
-    logger.error(msg=str(err), trace=traceback.format_exc())  # type: ignore
+    logger.error(msg=str(err))
     if original_err:
         raise err from original_err
     raise err
@@ -64,4 +64,4 @@ def log_attribute_per_dataset(df_data: pd.DataFrame, attribute: str, logger: log
     temp = df_data.groupby(attribute).agg("count")
     for name, nb_samples in pd.DataFrame(temp.iloc[:, 0]).itertuples():
         nb_attr[str(name)] = nb_samples
-    logger.info(desc, **nb_attr)
+    logger.info(f"{desc}: {nb_attr}")

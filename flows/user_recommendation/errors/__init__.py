@@ -12,6 +12,7 @@ class UserRecommendationErrorCode(IntEnum):
 
     UNKNOWN = -1
     MISSING_ATTRIBUTE = auto()
+    INPUT_DATA_ERROR = auto()
 
 
 class UserRecommendationException(Exception):
@@ -88,3 +89,20 @@ class MissingAttribute(UserRecommendationException):
         """
         suffix = f" Use one of the following:\n{self._valid_attributes}" if self._valid_attributes else ""
         return f"{self._attribute} is unknown.{suffix}"
+
+
+class InputDataError(UserRecommendationException):
+    """Exception raised if error when download or load input data"""
+
+    def __init__(self) -> None:
+        """Initialize error."""
+        super().__init__(UserRecommendationErrorCode.MISSING_ATTRIBUTE)
+
+    def __str__(self) -> str:
+        """Overridden __str__ method.
+
+        Returns
+            str: Formatted error message.
+
+        """
+        return "Error handling input data"

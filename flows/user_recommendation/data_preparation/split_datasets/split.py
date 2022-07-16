@@ -1,7 +1,6 @@
-"""Module for train test val datasets generation"""
+"""Define Split abstract class"""
 from abc import ABC, abstractmethod
-from typing import Iterator, Tuple, Union, overload
-from dataclasses import dataclass
+from typing import Tuple, Union
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -52,7 +51,6 @@ class Split(ABC):
             random_state=random_state,
             stratify=unique_questions["question_label"],
         )
-
         # Split test_eval dataset into test and eval
         test, val = train_test_split(
             test_val_questions[["question_id"]],
@@ -60,7 +58,7 @@ class Split(ABC):
             random_state=random_state,
             stratify=test_val_questions["question_label"],
         )
-        return (test, val)
+        return (test.question_id.tolist(), val.question_id.tolist())
 
     # For **kwargs typing https://peps.python.org/pep-0484/#arbitrary-argument-lists-and-default-argument-values
     @abstractmethod
@@ -75,35 +73,3 @@ class Split(ABC):
             Tuple[pd.DataFrame, pd.DataFrame]: tuple of dataframes containing test dataframe and val dataframe,
                                                 (test_df, val_df)
         """
-
-
-@dataclass
-class Datasets:
-    """Split dataset for supervised Machine Learning into training, validation and test
-
-    Attributes:\
-        training: training dataset
-        test: test dataset
-        validation: validation dataset
-    """
-
-    training: pd.DataFrame
-    test: pd.DataFrame
-    validation: pd.DataFrame
-
-    def __iter__(self) -> Iterator[tuple[str, pd.DataFrame]]:
-        """Iterate over Dataset object
-
-        Yield:\
-            Iterator[tuple[str, pd.DataFrame]]: Dataframe contained in Dataset object
-        """
-        for attr, value in self.__dict__.items():
-            yield attr, value
-
-    def asdict(self) -> dict[str, pd.DataFrame]:
-        """Convert to dictionary
-
-        Returns:\
-            dict[str, pd.DataFrame]: Dataset attribute converted to dict
-        """
-        return vars(self)

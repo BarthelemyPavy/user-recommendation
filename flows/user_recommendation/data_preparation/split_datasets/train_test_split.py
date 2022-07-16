@@ -2,12 +2,13 @@
 import math
 from typing import Tuple
 import numpy as np
-from user_recommendation.data_preparation.split_datasets import Datasets, Split
 import pandas as pd
 
 from user_recommendation.errors import MissingAttribute
 from user_recommendation.utils import log_raise, log_attribute_per_dataset
 from user_recommendation import logger
+from user_recommendation.data_preparation.split_datasets.datasets import Datasets
+from user_recommendation.data_preparation.split_datasets.split import Split
 
 
 class PreprocessDataframes:
@@ -17,7 +18,7 @@ class PreprocessDataframes:
         _dataframe_to_split: dataframe containing all information used to split
     """
 
-    _dataframe_to_split: pd.Dataframe
+    _dataframe_to_split: pd.DataFrame
 
     def __init__(self, questions: pd.DataFrame, answers: pd.DataFrame, users: pd.DataFrame) -> None:
         """Class constructor
@@ -156,6 +157,7 @@ class PreprocessDataframes:
             self._dataframe_to_split.answer_id.isin(positive_answer_ids)
         ]
         self._dataframe_to_split["question_label"] = self._metric_to_classes(metric_name=nb_answer_column)
+        logger.info(f"Preprocess dataframe shape: {self._dataframe_to_split.shape}")
         logger.info("Preprocess Done")
         return self._dataframe_to_split
 
@@ -179,17 +181,21 @@ class ColdStartSplit(Split):
         """
         data_type = "cold_start"
         questions = self._deduplicate_questions()
+        logger.info(f"unique questions {questions.shape}")
         test_ids, val_ids = self._test_val_split(
             unique_questions=questions,
             first_split_size=test_val_size * split_size,
             random_state=random_state,
         )
+        logger.info(f"Number of questions in cold start test dataset {len(test_ids)}")
+        logger.info(f"Number of questions in cold start validation dataset {len(val_ids)}")
         test_df = self._preprocessed_df[self._preprocessed_df.question_id.isin(test_ids)]
         val_df = self._preprocessed_df[self._preprocessed_df.question_id.isin(val_ids)]
 
         test_df["data_type"] = data_type
         val_df["data_type"] = data_type
-
+        logger.info(f"Cold start test dataset shape: {test_df.shape}")
+        logger.info(f"Cold start validation dataset shape: {val_df.shape}")
         log_attribute_per_dataset(test_df, "question_label", logger=logger, desc="test cold start dataframe")
         log_attribute_per_dataset(val_df, "question_label", logger=logger, desc="val cold start dataframe")
         return (test_df, val_df)
@@ -209,7 +215,7 @@ class WarmStartSplit(Split):
             preprocessed_df: See parent class docs
             cold_start_ids: Question ids used for cold start split
         """
-        super().__init__(preprocessed_df)
+        super().__init__(preprocessed_df=preprocessed_df)
         self._preprocessed_df = self._preprocessed_df[~self._preprocessed_df.question_id.isin(cold_start_ids)]
         self._cold_start_len = len(cold_start_ids)
 
@@ -252,6 +258,8 @@ class WarmStartSplit(Split):
             first_split_size=warm_start_test_nb,
             random_state=random_state,
         )
+        logger.info(f"Number of questions in warm start test dataset {len(test_ids)}")
+        logger.info(f"Number of questions in warm start validation dataset {len(val_ids)}")
         test_df = self._leave_last_item_strategy(
             dataframe=self._preprocessed_df[self._preprocessed_df.question_id.isin(test_ids)],
             rate_last_item=rate_last_item,
@@ -263,8 +271,8 @@ class WarmStartSplit(Split):
         test_df["data_type"] = data_type
         val_df["data_type"] = data_type
 
-        log_attribute_per_dataset(test_df, "question_label", logger=logger, desc="test cold start dataframe")
-        log_attribute_per_dataset(val_df, "question_label", logger=logger, desc="val cold start dataframe")
+        log_attribute_per_dataset(test_df, "question_label", logger=logger, desc="test warm start dataframe")
+        log_attribute_per_dataset(val_df, "question_label", logger=logger, desc="val warm start dataframe")
         return (test_df, val_df)
 
 
@@ -308,6 +316,9 @@ class CreateDatasetsObject:
             Datasets: datasets object containing train test val dataframes
         """
         self._datasets.test = pd.concat([test_cs, test_ws], ignore_index=True)
+        logger.info(f"Test dataset shape: {self._datasets.test.shape}")
         self._datasets.validation = pd.concat([val_cs, val_ws], ignore_index=True)
+        logger.info(f"Validation dataset shape: {self._datasets.validation.shape}")
         self._datasets.training = self._build_train_df(test_df=self._datasets.test, val_df=self._datasets.validation)
+        logger.info(f"Training dataset shape: {self._datasets.training.shape}")
         return self._datasets
