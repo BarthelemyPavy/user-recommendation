@@ -2,7 +2,7 @@
 import math
 from typing import Tuple
 import numpy as np
-from user_recommendation.split_datasets import Datasets, Split
+from user_recommendation.data_preparation.split_datasets import Datasets, Split
 import pandas as pd
 
 from user_recommendation.errors import MissingAttribute
