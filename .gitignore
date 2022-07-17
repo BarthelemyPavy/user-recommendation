@@ -135,3 +135,5 @@ okteto*
 __MACOSX*/
 .metaflow/*
 metaflow_card_cache/*
+
+user_recommendation/test_user_recommendation/integration_test/*
