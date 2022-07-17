@@ -306,5 +306,5 @@ class TrainingModelFlow(FlowSpec):
 
 
 if __name__ == '__main__':
-    # GenerateTrainTestValFlow()
-    TrainingModelFlow()
+    GenerateTrainTestValFlow()
+    # TrainingModelFlow()
