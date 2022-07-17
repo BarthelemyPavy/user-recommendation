@@ -7,12 +7,15 @@ class UserRecommendationErrorCode(IntEnum):
     """Error identifiers of user recommendation's errors
 
     Attributes:\
-        MissingAttribute: see MissingAttribute
+        MISSING_ATTRIBUTE: see MissingAttribute
+        INPUT_DATA_ERROR: see
+        BAD_EVALUATION_METRIC: see
     """
 
     UNKNOWN = -1
     MISSING_ATTRIBUTE = auto()
     INPUT_DATA_ERROR = auto()
+    BAD_EVALUATION_METRIC = auto()
 
 
 class UserRecommendationException(Exception):
@@ -88,7 +91,7 @@ class MissingAttribute(UserRecommendationException):
 
         """
         suffix = f" Use one of the following:\n{self._valid_attributes}" if self._valid_attributes else ""
-        return f"{self._attribute} is unknown.{suffix}"
+        return super().__str__() + f"{self._attribute} is unknown.{suffix}"
 
 
 class InputDataError(UserRecommendationException):
@@ -96,7 +99,7 @@ class InputDataError(UserRecommendationException):
 
     def __init__(self) -> None:
         """Initialize error."""
-        super().__init__(UserRecommendationErrorCode.MISSING_ATTRIBUTE)
+        super().__init__(UserRecommendationErrorCode.INPUT_DATA_ERROR)
 
     def __str__(self) -> str:
         """Overridden __str__ method.
@@ -105,4 +108,38 @@ class InputDataError(UserRecommendationException):
             str: Formatted error message.
 
         """
-        return "Error handling input data"
+        return super().__str__() + "Error handling input data"
+
+
+class BadEvaluationMetric(UserRecommendationException):
+    """Exception raised a bad evaluation metric is called during training phase
+
+    Attributes:
+
+        _available_metric_str: Available metrics to called format as: metr1, metr2, ...
+    """
+
+    def __init__(self, metric: str, available_metrics: list[str]) -> None:
+        """Error constructor
+
+        Args:
+            metric: Wrong metric called
+            available_metrics: List of callable metrics
+        """
+        super().__init__(UserRecommendationErrorCode.BAD_EVALUATION_METRIC)
+        self._metric = metric
+        self._available_metric_str = ", ".join(available_metrics)
+
+    def __str__(self) -> str:
+        """Overridden __str__ method.
+
+        Returns
+            str: Formatted error message.
+
+        """
+        return (
+            super().__str__()
+            + f"""Bad metric called '{self._metric}', please choose one of these
+                                        following evaluation metrics:\n
+                                        {self._available_metric_str}"""
+        )

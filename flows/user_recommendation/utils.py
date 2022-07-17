@@ -1,14 +1,12 @@
 """Some utils functions"""
-
-# The format string to be used by the logger across projects.
 import logging
 import sys
 import traceback
 import pandas as pd
 from typing import Optional
 
-
-FORMAT: str = "{asctime} :: {funcName} :: {levelname} :: {message}"
+# The format string to be used by the logger across projects.
+FORMAT: str = "{asctime} :: {module}/{filename}/{funcName} :: {levelname} :: {message}"
 
 
 def init_logger(name: Optional[str] = None) -> logging.Logger:
@@ -44,6 +42,7 @@ def log_raise(
     Raises:
         Exception: systematically
     """
+    logger = logging.LoggerAdapter(logger, {"trace": traceback.format_exc()})
     logger.error(msg=str(err))
     if original_err:
         raise err from original_err
