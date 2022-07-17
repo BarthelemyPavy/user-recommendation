@@ -2,8 +2,6 @@
 
 This project has goal to predict the most likely user to answer a question, given its title & text.
 It's based on a dataset from public Stack Overflow posts.
-<<<<<<< Updated upstream
-=======
 
 ## requirements
 
@@ -87,4 +85,3 @@ Make sure to be at the root directory of the project (same level than pyproject.
 ```
 > poetry run download_data
 ```
->>>>>>> Stashed changes
