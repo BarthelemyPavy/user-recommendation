@@ -1,29 +1,33 @@
 """File where Metaflow Flow are defined"""
+import fire
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from metaflow import FlowSpec, step, Parameter, metadata, card, current
 from metaflow.cards import Image, Artifact, Markdown
 import pandas as pd
 from user_recommendation import logger
+from user_recommendation.utils import string_to_enum
+from user_recommendation.errors import InvalidTag
 
 metadata("local@" + str(Path(__file__).parents[1]))
 
 
-def subsample_for_ranking(data_to_subsample: pd.DataFrame, random_state: int, frac: float) -> pd.DataFrame:
-    """Sample some questions from test set cold start to predict
+class EFlowTags(Enum):
+    """Tags that can be used to run different flow
 
-    Args:
-        data_to_subsample: dataframe with questions unseen at training stage
-        random_state: random state
-        frac: rate of question to sample
+    Attributes:\
+        GENERATE_EMBEDDINGS: execute nodes that generate embeddings from input features
+        SPLIT_DATASET: split data into train test val datasets
+        TRAINING: train model
+        ALL: run all flows
 
-    Returns:
-        pd.DataFrame: question on which prediction will apply
     """
-    questions_unique = data_to_subsample.drop_duplicates(subset="question_id")
-    return questions_unique[questions_unique.data_type == "cold_start"].sample(frac=frac, random_state=random_state)[
-        ["question_id"]
-    ]
+
+    GENERATE_EMBEDDINGS = "generate_embeddings"
+    SPLIT_DATASET = "split_dataset"
+    TRAINING = "training"
+    ALL = "all"
 
 
 class GenerateTrainTestValFlow(FlowSpec):
@@ -148,6 +152,24 @@ class GenerateTrainTestValFlow(FlowSpec):
 
 
 class TrainingModelFlow(FlowSpec):
+    """Flow for training LightFM model"""
+
+    @staticmethod
+    def subsample_for_ranking(data_to_subsample: pd.DataFrame, random_state: int, frac: float) -> pd.DataFrame:
+        """Sample some questions from test set cold start to predict
+
+        Args:
+            data_to_subsample: dataframe with questions unseen at training stage
+            random_state: random state
+            frac: rate of question to sample
+
+        Returns:
+            pd.DataFrame: question on which prediction will apply
+        """
+        questions_unique = data_to_subsample.drop_duplicates(subset="question_id")
+        return questions_unique[questions_unique.data_type == "cold_start"].sample(
+            frac=frac, random_state=random_state
+        )[["question_id"]]
 
     random_state = Parameter(
         "random_state",
@@ -267,7 +289,7 @@ class TrainingModelFlow(FlowSpec):
 
         model = self.model_artifacts[0]
         # Subsample questions to apply prediction
-        subsample_questions = subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.05)
+        subsample_questions = self.subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.05)
         logger.info(f"{subsample_questions.size} will be predict")
         # Iterate over all users will be too long for an example run. So we will randomly take a sample of users
         subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=3000).tolist()
@@ -305,6 +327,17 @@ class TrainingModelFlow(FlowSpec):
         pass
 
 
-if __name__ == '__main__':
-    GenerateTrainTestValFlow()
-    # TrainingModelFlow()
+def flow_trigger(**kwargs: dict[str, str]) -> None:
+    tag: str = kwargs.get("tag")  # type: ignore
+    flow_tag = string_to_enum(tag, EFlowTags, InvalidTag, logger)
+    if flow_tag == EFlowTags.SPLIT_DATASET:
+        GenerateTrainTestValFlow()
+    if flow_tag == EFlowTags.TRAINING:
+        TrainingModelFlow()
+    if flow_tag == EFlowTags.ALL:
+        GenerateTrainTestValFlow()
+        TrainingModelFlow()
+
+
+if __name__ == "__main__":
+    fire.Fire(flow_trigger)

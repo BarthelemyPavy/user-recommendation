@@ -10,12 +10,14 @@ class UserRecommendationErrorCode(IntEnum):
         MISSING_ATTRIBUTE: see MissingAttribute
         INPUT_DATA_ERROR: see
         BAD_EVALUATION_METRIC: see
+        INVALID_TAG: see InvalidTag
     """
 
     UNKNOWN = -1
     MISSING_ATTRIBUTE = auto()
     INPUT_DATA_ERROR = auto()
     BAD_EVALUATION_METRIC = auto()
+    INVALID_TAG = auto()
 
 
 class UserRecommendationException(Exception):
@@ -143,3 +145,37 @@ class BadEvaluationMetric(UserRecommendationException):
                                         following evaluation metrics:\n
                                         {self._available_metric_str}"""
         )
+
+
+class InvalidTag(UserRecommendationException):
+    """Exception raised when the input tag is not valid
+
+    Attributes
+        _bad_name: identifier that is unknown
+        _doc: documentation of the enumerator where the identifiers are defined
+
+    """
+
+    _bad_name: str
+    _doc: str
+
+    def __init__(self, bad_name: str, enum_doc: str) -> None:
+        """Initialize error.
+
+        Args:
+            bad_name: see _bad_name attributes docstring.
+            enum_doc: see _doc attributes docstring.
+
+        """
+        super().__init__(UserRecommendationErrorCode.INVALID_TAG)
+        self._bad_name = bad_name
+        self._doc = enum_doc
+
+    def __str__(self) -> str:
+        """Overridden __str__ method.
+
+        Returns
+            str: Formatted error message.
+
+        """
+        return f"Tag {self._bad_name} unknown, use one of the following identifiers:\n{self._doc}"
