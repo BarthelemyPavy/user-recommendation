@@ -134,5 +134,4 @@ okteto*
 .stignore
 __MACOSX*/
 .metaflow/*
-flows/metaflow/.metaflow/*
-!flows/metaflow/.metaflow/.gitkeep
+metaflow_card_cache/*
