@@ -17,7 +17,8 @@ fmt = "scripts:fmt"
 lint = "scripts:lint"
 test = "scripts:test"
 
-download = "scripts:download_data"
+download_data = "scripts:download_data"
+nltk_resources = "scripts:download_nltk_resources"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.11"
@@ -34,6 +35,9 @@ bertopic = "^0.11.0"
 metaflow = "^2.7.2"
 gdown = "^4.5.1"
 types-PyYAML = "^6.0.10"
+seaborn = "^0.11.2"
+nltk = "^3.7"
+fire = "^0.4.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
@@ -43,7 +47,6 @@ pylint = "^2.14.4"
 mypy = "^0.961"
 halo = "^0.0.31"
 jupyterlab = "^3.4.3"
-seaborn = "^0.11.2"
 wordcloud = "^1.8.2"
 
 

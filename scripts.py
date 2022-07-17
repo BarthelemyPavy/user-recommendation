@@ -91,3 +91,14 @@ def download_data() -> None:
     with zipfile.ZipFile(dest_path + "/" + zip_name, 'r') as zip_ref:
         zip_ref.extractall(dest_path)
     os.remove(dest_path + "/" + zip_name)
+
+
+def download_nltk_resources() -> None:
+    """Download resources from nltk"""
+    import nltk
+
+    nltk.download("punkt")
+    nltk.download("stopwords")
+    nltk.download("wordnet")
+    nltk.download("averaged_perceptron_tagger")
+    nltk.download("omw-1.4")
