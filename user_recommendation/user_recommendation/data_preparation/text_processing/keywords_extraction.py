@@ -12,9 +12,9 @@ from keyphrase_vectorizers import KeyphraseCountVectorizer
 
 import numpy.typing as npt
 
-from user_recommendation.data_preparation.text_processing.tfidf import TfidfTransformerExtractor, Lemmatizer
+from user_recommendation.data_preparation.text_processing.tfidf import TfidfTransformerExtractor, Lemmatizer, EStemTag
 from user_recommendation.data_preparation.text_processing.keybert import KeyBERTExtractor
-from user_recommendation.errors import KeywordExtractorError
+from user_recommendation.errors import KeywordExtractorError, InvalidTag
 from user_recommendation.utils import log_raise
 from user_recommendation import logger
 
@@ -50,25 +50,36 @@ class KeywordsExtractor:
         Args:
             extraction_method: Tag to choose text extraction method to use
             kwargs: Define args to pass for extractor initialization:\n
-                - For tfidf: see CountVectorizer from sklearn
+                - For tfidf:\n
+                        top_n: number of tag to keep per document
+                        stem: choose between stemmer or lemmatizer as preprocesser
+                        CountVectorizer args: see CountVectorizer from sklearn
                 - For keybert:\n
                         model (str): Name of pre trained model (assuming we are using transformers models)
                                     See example to the official documentation
 
         """
         if extraction_method == EKeywordExtractorTag.TFIDF:
-            tfidf = TfidfTransformerExtractor(top_n=kwargs.get("top_n", 5))  # type: ignore
+            top_n: int = kwargs.get("top_n", 5)  # type: ignore
             kwargs.pop("top_n", None)
+            stem: EStemTag = kwargs.get("stem", EStemTag.STEMMER)  # type: ignore
+            kwargs.pop("stem", None)
             self._model = Pipeline(
                 [
-                    ("lemma", Lemmatizer()),
+                    (stem.value, Lemmatizer(stem=stem)),
                     ('vect', CountVectorizer(**kwargs)),
-                    ('tfidf', tfidf),
+                    ('tfidf', TfidfTransformerExtractor(top_n=top_n)),
                 ]
             )
         elif extraction_method == EKeywordExtractorTag.KEYBERT:
             self._model = KeyBERTExtractor(kwargs.get("model")) if "model" in kwargs else KeyBERTExtractor()
             self._keyphrase_vectorizer = KeyphraseCountVectorizer(pos_pattern="<N.*>", spacy_exclude=["parser", "ner"])
+        else:
+            log_raise(
+                logger=logger,
+                err=KeywordExtractorError(f"Extractor {extraction_method.value}"),
+                original_err=InvalidTag(stem.value, EStemTag.__doc__),  # type: ignore
+            )
 
     def fit(self, data: Union[pd.Series, npt.NDArray[np.str_], list[str]]) -> None:
         """Fit method, require for tfidf extractor

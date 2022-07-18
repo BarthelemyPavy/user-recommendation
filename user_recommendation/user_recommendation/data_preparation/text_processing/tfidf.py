@@ -1,25 +1,52 @@
 """Use tf-idf to process text and extract relevant information for cold start recommendations"""
-import re
 from __future__ import annotations
+from enum import Enum
+import re
 from typing import Optional, TypeVar
 from bs4 import BeautifulSoup
 import numpy as np
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.base import BaseEstimator, TransformerMixin
 from nltk import word_tokenize
-from nltk.stem import WordNetLemmatizer
+from nltk.stem import WordNetLemmatizer, SnowballStemmer
 
 import numpy.typing as npt
 
+from user_recommendation.utils import log_raise
+from user_recommendation.errors import InvalidTag
+from user_recommendation import logger
+
 SklearnType = TypeVar("SklearnType")
+
+
+class EStemTag(Enum):
+    """Tags that can be used to choose between stemmer or lemmatizer
+
+    Attributes:\
+        STEMMER: Use SnowballStemmer from nltk
+        LEMMATIZER: Use WordNetLemmatizer from nltk
+
+    """
+
+    STEMMER = "stemmer"
+    LEMMATIZER = "lemmatizer"
 
 
 class Lemmatizer(BaseEstimator, TransformerMixin):
     """Define a lemmatizer to use into sklearn Pipeline"""
 
-    def __init__(self) -> None:
-        """Init nltk Lemmatizer"""
-        self.lemma = WordNetLemmatizer()
+    def __init__(self, stem: EStemTag) -> None:
+        """Init nltk Lemmatizer
+
+        Args:
+            stem: use stemmer or lemmatizer
+        """
+        if stem == EStemTag.LEMMATIZER:
+            self.lemma = WordNetLemmatizer()
+        elif stem == EStemTag.STEMMER:
+            self.lemma = SnowballStemmer("english")
+        else:
+            log_raise(logger=logger, err=InvalidTag(stem.value, EStemTag.__doc__))  # type: ignore
 
     def fit(self, X: SklearnType, y: Optional[SklearnType] = None) -> Lemmatizer:
         """Nothing happens here
@@ -74,8 +101,8 @@ class Lemmatizer(BaseEstimator, TransformerMixin):
         """
         to_return = text
         if isinstance(text, str):
-            text = re.sub(r"^https?:\/\/.*[\r\n]*", "", text, flags=re.MULTILINE)
-            text = re.sub("^\d+\s|\s\d+\s|\s\d+$", "", text, flags=re.MULTILINE)
+            text_without_ulr = re.sub(r"https?://[A-Za-z0-9./]+", "", text, flags=re.MULTILINE)
+            to_return = re.sub("\d+", "", text_without_ulr, flags=re.MULTILINE)
         return to_return
 
     def _lemmatize(self, text: str) -> str:
@@ -87,7 +114,11 @@ class Lemmatizer(BaseEstimator, TransformerMixin):
         Returns:
             str: Lemmatized string
         """
-        return " ".join([self.lemma.lemmatize(word) for word in word_tokenize(text)])
+        if isinstance(self.lemma, WordNetLemmatizer):
+            to_return = " ".join([self.lemma.lemmatize(word) for word in word_tokenize(text)])
+        elif isinstance(self.lemma, SnowballStemmer):
+            to_return = " ".join([self.lemma.stem(word) for word in word_tokenize(text)])
+        return to_return
 
     def transform(self, X: list[str], y: Optional[SklearnType] = None) -> list[str]:
         """Take a list of string in input and lemmatized each of them
