@@ -1,6 +1,6 @@
 """File where text processing Flow is defined"""
 from pathlib import Path
-from metaflow import FlowSpec, step, Parameter
+from metaflow import FlowSpec, step, Parameter, metadata
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -8,17 +8,26 @@ from user_recommendation import logger
 from user_recommendation.data_preparation.text_processing.keywords_extraction import KeywordsExtractor
 
 
+metadata("local@" + str(Path(__file__).parents[1]))
+
+
 class TextProcessingFlow(FlowSpec):
-    """Flow used to extract keywords from textual data"""
+    """Flow used to extract keywords from textual data\n
+    In this flow we will:\n
+        - Download input data.
+        - Initialize keywords extractors for users and questions.
+        - Extract keywords for users.
+        - Extract keywords for questions.
+    """
 
     def _batch_tfidf(self, extractor: KeywordsExtractor, data_to_batch: list[str]) -> npt.NDArray[np.str_]:
-        """_summary_
+        """Helper method to batch tfidf process in order to limit memory error
 
         Args:
-            extractor (KeywordsExtractor): _description_
+            extractor: Object use to extract keywords.
 
         Returns:
-            npt.NDArray[np.str_]: _description_
+            npt.NDArray[np.str_]: array of keywords.
         """
         from user_recommendation.data_preparation.text_processing.keybert import KeyBERTExtractor
 
@@ -43,12 +52,6 @@ class TextProcessingFlow(FlowSpec):
         "input_file_path",
         help="Path to files containing input data",
         default=str(Path(__file__).parents[1] / "data"),
-    )
-
-    positive_interaction_threshold = Parameter(
-        "positive_interaction_threshold",
-        help="Threshold defining if an interactions question/answer is positive based on answer's score",
-        default=1,
     )
 
     @step
@@ -98,24 +101,32 @@ class TextProcessingFlow(FlowSpec):
 
     @step
     def initialize_keywords_extractors_tfidf(self) -> None:
-        """Initialize tfidf keyword extractor"""
+        """Initialize tfidf keyword extractor for users and questions"""
         from user_recommendation.data_preparation.text_processing.keywords_extraction import (
             KeywordsExtractor,
             EKeywordExtractorTag,
         )
+        from user_recommendation.data_preparation.text_processing.tfidf import EStemTag
+        from user_recommendation.utils import string_to_enum
+        from user_recommendation.errors import InvalidTag
 
-        nb_keywords = self.config.get("nb_keywords")
+        self.stem_enum: EStemTag = string_to_enum(
+            self.config.get("stem"), EStemTag, InvalidTag, logger=logger
+        )  # type:ignore
+
         self.extractor_tfidf_users = KeywordsExtractor(
             extraction_method=EKeywordExtractorTag.TFIDF,
             stop_words=self.config.get("stop_words"),
             strip_accents=self.config.get("strip_accents"),
-            top_n=nb_keywords,
+            top_n=self.config.get("nb_keywords"),
+            stem=self.stem_enum,  # type:ignore
         )
         self.extractor_tfidf_questions = KeywordsExtractor(
             extraction_method=EKeywordExtractorTag.TFIDF,
             stop_words=self.config.get("stop_words"),
             strip_accents=self.config.get("strip_accents"),
-            top_n=nb_keywords,
+            top_n=self.config.get("nb_keywords"),
+            stem=self.stem_enum,  # type:ignore
         )
         self.next(self.extract_users_keywords_tfidf, self.extract_questions_keywords_tfidf)
 
@@ -149,6 +160,11 @@ class TextProcessingFlow(FlowSpec):
     @step
     def extract_questions_keywords_tfidf(self) -> None:
         """Extract keywords from question textual data using tfidf"""
+        # Get number of keywords to keep per doc
+        nb_keywords = self.config.get("nb_keywords")
+        # Generate column name based on number of keywords
+        self.tags_columns = [f"tag{i}" for i in range(1, nb_keywords + 1)]
+
         # Get data to process
         data_to_process = self.questions.title.tolist()
         # Fit tfidf extractor
@@ -166,6 +182,7 @@ class TextProcessingFlow(FlowSpec):
     @step
     def join(self, inputs) -> None:  # type: ignore
         """Merge data artifact"""
+        self.tags_columns = inputs.extract_users_keywords_tfidf.tags_columns
         self.extractor_tfidf_questions = inputs.extract_questions_keywords_tfidf.extractor_tfidf_questions
         self.extractor_tfidf_users = inputs.extract_users_keywords_tfidf.extractor_tfidf_users
         self.merge_artifacts(
@@ -184,3 +201,7 @@ class TextProcessingFlow(FlowSpec):
     def end(self) -> None:
         """End of flow"""
         pass
+
+
+if __name__ == "__main__":
+    TextProcessingFlow()

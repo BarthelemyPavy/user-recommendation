@@ -1,11 +1,21 @@
 """File where train test split Flow is defined"""
 from pathlib import Path
-from metaflow import FlowSpec, step, Parameter
+from metaflow import FlowSpec, step, Parameter, metadata
 from user_recommendation import logger
 
 
+metadata("local@" + str(Path(__file__).parents[1]))
+
+
 class GenerateTrainTestValFlow(FlowSpec):
-    """Flow used to generate train test and validation data"""
+    """Flow used to generate train test and validation data.\n
+    In this flow we will:\n
+        - Download input data.
+        - Preprocess data to split.
+        - Apply a cold start split.
+        - Apply a warm start split.
+        - Wrap train, validation and test sets into an object.
+    """
 
     random_state = Parameter(
         "random_state",
@@ -47,7 +57,7 @@ class GenerateTrainTestValFlow(FlowSpec):
 
     @step
     def download_data(self) -> None:
-        "Download data from google drive"
+        "Download data from google drive and store it to data folder"
         from user_recommendation.data_preparation.data_loading.fetch_data import download_data
 
         if not self.all_exists:
@@ -68,7 +78,8 @@ class GenerateTrainTestValFlow(FlowSpec):
 
     @step
     def load_config(self) -> None:
-        """Load training config from yaml file"""
+        """Load training config from yaml file.
+        This file contains parameters for train test split generation"""
         import yaml
 
         with open(self.config_path, "r") as stream:
@@ -124,3 +135,7 @@ class GenerateTrainTestValFlow(FlowSpec):
             test_cs=self.test_df_cs, test_ws=self.test_df_ws, val_cs=self.val_df_cs, val_ws=self.val_df_ws
         )
         pass
+
+
+if __name__ == "__main__":
+    GenerateTrainTestValFlow()

@@ -1,18 +1,31 @@
 """File where Training Flow is defined"""
 from datetime import datetime, timezone
-from io import BytesIO
 from pathlib import Path
-from metaflow import FlowSpec, step, Parameter, card, current
+from metaflow import FlowSpec, step, Parameter, card, current, metadata
 from metaflow.cards import Image, Artifact, Markdown
 import pandas as pd
 from user_recommendation import logger
 
 
+metadata("local@" + str(Path(__file__).parents[1]))
+
+
 class TrainingModelFlow(FlowSpec):
-    """Flow for training LightFM model"""
+    """Flow for training LightFM model.\n
+    In this flow we will:\n
+        - Load data artifact from both GenerateTrainTestValFlow and TextProcessingFlow.
+        - Build lightfm dataset and create interactions.
+        - Build users and questions features for Content Based part of recommendation.
+        - Train the model as pure Collaborative filtering model and Hybrid model.
+        - Test models on test set.
+        - Select best model based on test results.
+        - Make a prediction of a subsample of test result as: question_id, [user_1, user_2, ...]
+        - Save prediction results as csv
+        - Generate report with all metrics from training
+    """
 
     @staticmethod
-    def subsample_for_ranking(data_to_subsample: pd.DataFrame, random_state: int, frac: float) -> pd.DataFrame:
+    def _subsample_for_ranking(data_to_subsample: pd.DataFrame, random_state: int, frac: float) -> pd.DataFrame:
         """Sample some questions from test set cold start to predict
 
         Args:
@@ -72,7 +85,9 @@ class TrainingModelFlow(FlowSpec):
         run_text = Flow("TextProcessingFlow").latest_successful_run
         self.questions_keywords_df = run_text["join"].task.data.questions_keywords_df
         logger.info(f"Get questions_keywords_df dataframe {self.questions_keywords_df.shape}")
-        self.users_keywords_df = run_text["join"].task.data.users_keywords_df
+        # Fill nan value by "", as we've seen in data exploration step
+        # only textual data was missing for users
+        self.users_keywords_df = run_text["join"].task.data.users_keywords_df.fillna("")
         logger.info(f"Get users_keywords_df dataframe {self.users_keywords_df.shape}")
         self.tags_columns = run_text["join"].task.data.tags_columns
         logger.info(f"Number of tags per question/user {len(self.tags_columns)}")
@@ -117,10 +132,10 @@ class TrainingModelFlow(FlowSpec):
         self.validation_interactions_weigths = get_interactions(  # type: ignore
             data=self.datasets.validation, dataset=self.lightfm_dataset, with_weights=True, obj_desc="validation"
         )
-        self.next(self.build_user_features)
+        self.next(self.build_users_features)
 
     @step
-    def build_user_features(self) -> None:
+    def build_users_features(self) -> None:
         """Build users features matrix"""
         from user_recommendation.training.lightfm_processing import get_users_features
 
@@ -137,17 +152,37 @@ class TrainingModelFlow(FlowSpec):
         self.questions_features = get_questions_features(  # type: ignore
             data=self.questions_keywords_df, dataset=self.lightfm_dataset, tags_column=self.tags_columns
         )
-        self.next(self.train_model)
+        self.next(self.initialize_lightfm_trainer)
 
-    @card(type='blank')
     @step
-    def train_model(self) -> None:
-        """Train Ligth FM model"""
+    def initialize_lightfm_trainer(self) -> None:
+        """Initialize models for training"""
         from user_recommendation.training.train import LigthFMTrainer
 
-        trainer = LigthFMTrainer(dataset=self.lightfm_dataset)
+        self.trainer = LigthFMTrainer(dataset=self.lightfm_dataset, no_components=self.config.get("no_components"))
+        self.next(self.train_model_cf)
 
-        self.model_artifacts = trainer.fit(
+    @step
+    def train_model_cf(self) -> None:
+        """Train Ligth FM model"""
+
+        self.model_artifacts_cf = self.trainer.fit(
+            train_interactions=self.training_interactions_weigths[0],
+            test_interactions=self.validation_interactions_weigths[0],
+            epochs=self.config.get("epochs"),
+            num_threads=self.config.get("num_threads"),
+            is_tracked=self.is_tracked,
+            show_plot=self.show_plot,
+            sample_weight=self.training_interactions_weigths[1],
+            reset_state=True,
+        )
+        self.next(self.train_model_hybrid)
+
+    @step
+    def train_model_hybrid(self) -> None:
+        """Train Ligth FM model"""
+
+        self.model_artifacts_hybrid = self.trainer.fit(
             train_interactions=self.training_interactions_weigths[0],
             test_interactions=self.validation_interactions_weigths[0],
             epochs=self.config.get("epochs"),
@@ -157,23 +192,8 @@ class TrainingModelFlow(FlowSpec):
             user_features=self.questions_features,
             item_features=self.users_features,
             sample_weight=self.training_interactions_weigths[1],
+            reset_state=True,
         )
-        current.card.append(Markdown("# Training info  "))
-        current.card.append(Markdown(f"Run id {current.run_id}  "))
-        current.card.append(Markdown(f"Pathspec id {current.pathspec}  "))
-        current.card.append(Markdown("## Config  "))
-        current.card.append(Artifact(self.config))
-
-        current.card.append(Markdown("## Model params  "))
-        current.card.append(Artifact(self.model_artifacts[0].model.get_params()))
-
-        if self.is_tracked:
-            current.card.append(Markdown("## Tracked Metrics  "))
-            current.card.append(Markdown("### Tracked Metrics values "))
-            current.card.append(Artifact(self.model_artifacts[1]))
-            if self.show_plot:
-                current.card.append(Markdown("### Tracked Metrics Plot "))
-                current.card.append(Image.from_matplotlib(self.model_artifacts[-1]))
         self.next(self.test_evaluation)
 
     @step
@@ -181,16 +201,37 @@ class TrainingModelFlow(FlowSpec):
         """Evaluate test set"""
         from lightfm.evaluation import auc_score
 
-        model = self.model_artifacts[0]
-        logger.info(f"Evaluate test set")
-        self.test_auc = model.evaluation_step(
+        # Evaluate CF model
+        model_cf = self.model_artifacts_cf[0]
+        logger.info(f"Evaluate test set for CF model")
+        self.test_auc_cf = model_cf.evaluation_step(
+            test_interactions=self.test_interactions_weigths[0],
+            func=auc_score,
+            train_interactions=self.training_interactions_weigths[0],
+        )
+        logger.info(f"Test Model CF auc: {self.test_auc_cf}")
+        # Evaluate Hybrid model
+        model_hybrid = self.model_artifacts_hybrid[0]
+        logger.info(f"Evaluate test set for Hybrid model")
+        self.test_auc_hybrid = model_hybrid.evaluation_step(
             test_interactions=self.test_interactions_weigths[0],
             func=auc_score,
             train_interactions=self.training_interactions_weigths[0],
             user_features=self.questions_features,
             item_features=self.users_features,
         )
-        logger.info(f"Test auc: {self.test_auc}")
+        logger.info(f"Test Model Hybrid auc: {self.test_auc_hybrid}")
+        self.next(self.select_best_model)
+
+    @step
+    def select_best_model(self) -> None:
+        """Select best model between Pure CF and Hybrid"""
+        if self.test_auc_cf >= self.test_auc_hybrid:
+            self.best_model = self.model_artifacts_cf[0]
+            logger.info("And the winner is: Collaborative Filtering Model!!!")
+        else:
+            self.best_model = self.model_artifacts_hybrid[0]
+            logger.info("And the winner is: Hybrid Model!!!")
         self.next(self.test_prediction)
 
     @step
@@ -198,9 +239,8 @@ class TrainingModelFlow(FlowSpec):
         """Make ranking prediction on subsample of test set"""
         from user_recommendation.training.lightfm_processing import get_interactions
 
-        model = self.model_artifacts[0]
         # Subsample questions to apply prediction
-        subsample_questions = self.subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.01)
+        subsample_questions = self._subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.01)
         logger.info(f"{subsample_questions.size} will be predict")
         # Iterate over all users will be too long for an example run. So we will randomly take a sample of users
         subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=20000).tolist()
@@ -214,7 +254,7 @@ class TrainingModelFlow(FlowSpec):
         )[0]
 
         logger.info("Prediction is running")
-        self.ranked_predictions = model.predict_rank(
+        self.ranked_predictions = self.best_model.predict_rank(
             data=subsample_questions,
             interactions=to_predict_interactions,
             num_threads=self.config.get("num_threads"),
@@ -222,6 +262,11 @@ class TrainingModelFlow(FlowSpec):
             user_features=self.users_features,
         )
         logger.info("Prediction Done")
+        self.next(self.save_predictions)
+
+    @step
+    def save_predictions(self) -> None:
+        """Save predictions as csv into user_recommendation/test_user_recommendation/integration_test/"""
         path = str(
             Path(__file__).parent
             / "test_user_recommendation"
@@ -235,6 +280,53 @@ class TrainingModelFlow(FlowSpec):
         logger.info(f"Prediction saved at {path}")
         self.next(self.end)
 
+    @card(type='blank')
     @step
     def end(self) -> None:
-        pass
+        """Generate report with training informations"""
+        logger.info(f"pathspec: {current.pathspec}")
+        self.create_card()
+
+    def create_card(self) -> None:
+        """Create card resuming all training models"""
+
+        current.card.append(Markdown("# Training info  "))
+        current.card.append(Markdown(f"Run id {current.run_id}  "))
+        current.card.append(Markdown(f"Pathspec id {current.pathspec}  "))
+        current.card.append(Markdown("## Config  "))
+        current.card.append(Artifact(self.config))
+
+        current.card.append(Markdown("# Models Report  "))
+        current.card.append(Markdown("## Test Set Results  "))
+        current.card.append(Markdown("Collaborative Filtering  "))
+        current.card.append(Artifact(self.test_auc_cf))
+        current.card.append(Markdown("Hybrid  "))
+        current.card.append(Artifact(self.test_auc_hybrid))
+
+        # CF model
+        current.card.append(Markdown("## Collaborative Filtering Model  "))
+        current.card.append(Markdown("### Model params  "))
+        current.card.append(Artifact(self.model_artifacts_cf[0].model.get_params()))
+
+        if self.is_tracked:
+            current.card.append(Markdown("### Tracked Metrics "))
+            current.card.append(Artifact(self.model_artifacts_cf[1]))
+            if self.show_plot:
+                current.card.append(Markdown("### Tracked Metrics Plot "))
+                current.card.append(Image.from_matplotlib(self.model_artifacts_cf[-1]))
+
+        # Hybrid model
+        current.card.append(Markdown("## Hybrid Model  "))
+        current.card.append(Markdown("### Model params  "))
+        current.card.append(Artifact(self.model_artifacts_hybrid[0].model.get_params()))
+
+        if self.is_tracked:
+            current.card.append(Markdown("### Tracked Metrics "))
+            current.card.append(Artifact(self.model_artifacts_hybrid[1]))
+            if self.show_plot:
+                current.card.append(Markdown("### Tracked Metrics Plot "))
+                current.card.append(Image.from_matplotlib(self.model_artifacts_hybrid[-1]))
+
+
+if __name__ == "__main__":
+    TrainingModelFlow()
