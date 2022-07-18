@@ -68,6 +68,7 @@ class LigthFMTrainer:
         is_tracked: bool = True,
         validation_metrics: Optional[list[str]] = None,
         show_plot: bool = True,
+        reset_state: bool = True,
         **kwargs: int,
     ) -> Tuple[LightFM, Optional[pd.DataFrame], Optional[Plot]]:
         """Fit ligth fm model
@@ -82,6 +83,7 @@ class LigthFMTrainer:
                          and save then plot.
                         Defaults to True.
             show_plot: Should we plot metrics or not. Defaults to True.
+            reset_state: If True, reset all parameters to fit from scratch
         """
         if not is_tracked:
             to_return = (
@@ -92,6 +94,10 @@ class LigthFMTrainer:
         else:
             if test_interactions == None:
                 log_raise(logger=logger, err=ValueError("If is_tracked=True, test_interactions should not be None."))
+
+            if reset_state:
+                self._model._reset_state()
+
             to_return = self._track_model(
                 train_interactions=train_interactions,
                 test_interactions=test_interactions,
