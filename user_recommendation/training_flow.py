@@ -109,13 +109,13 @@ class TrainingModelFlow(FlowSpec):
         from user_recommendation.training.lightfm_processing import get_interactions
 
         self.training_interactions_weigths = get_interactions(  # type: ignore
-            data=self.datasets.training, dataset=self.lightfm_dataset, with_weights=False, obj_desc="training"
+            data=self.datasets.training, dataset=self.lightfm_dataset, with_weights=True, obj_desc="training"
         )
         self.test_interactions_weigths = get_interactions(  # type: ignore
-            data=self.datasets.test, dataset=self.lightfm_dataset, with_weights=False, obj_desc="test"
+            data=self.datasets.test, dataset=self.lightfm_dataset, with_weights=True, obj_desc="test"
         )
         self.validation_interactions_weigths = get_interactions(  # type: ignore
-            data=self.datasets.validation, dataset=self.lightfm_dataset, with_weights=False, obj_desc="validation"
+            data=self.datasets.validation, dataset=self.lightfm_dataset, with_weights=True, obj_desc="validation"
         )
         self.next(self.build_user_features)
 
@@ -187,6 +187,8 @@ class TrainingModelFlow(FlowSpec):
             test_interactions=self.test_interactions_weigths[0],
             func=auc_score,
             train_interactions=self.training_interactions_weigths[0],
+            user_features=self.questions_features,
+            item_features=self.users_features,
         )
         logger.info(f"Test auc: {self.test_auc}")
         self.next(self.test_prediction)
@@ -201,7 +203,7 @@ class TrainingModelFlow(FlowSpec):
         subsample_questions = self.subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.01)
         logger.info(f"{subsample_questions.size} will be predict")
         # Iterate over all users will be too long for an example run. So we will randomly take a sample of users
-        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=50000).tolist()
+        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=20000).tolist()
         subsample_questions["user_id"] = [subsample_users_list for i in subsample_questions.index]
         subsample_questions = subsample_questions.explode("user_id").reset_index(drop=True)
         logger.info(f"Data to predict shape: {subsample_questions.shape}")
@@ -216,10 +218,12 @@ class TrainingModelFlow(FlowSpec):
             data=subsample_questions,
             interactions=to_predict_interactions,
             num_threads=self.config.get("num_threads"),
+            question_features=self.questions_features,
+            user_features=self.users_features,
         )
         logger.info("Prediction Done")
         path = str(
-            Path(__file__).parents[1]
+            Path(__file__).parent
             / "test_user_recommendation"
             / "integration_test"
             / f"{datetime.now(timezone.utc).isoformat()}.csv"

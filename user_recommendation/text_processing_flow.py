@@ -122,29 +122,43 @@ class TextProcessingFlow(FlowSpec):
     @step
     def extract_users_keywords_tfidf(self) -> None:
         """Extract keywords from user textual data using tfidf"""
+        # Get number of keywords to keep per doc
         nb_keywords = self.config.get("nb_keywords")
-        self.tags_columns = [f"tags{i}" for i in range(1, nb_keywords + 1)]
-        # A lot of about me are missing, replace it by empty string for processing
-        self.users.about_me.fillna("", inplace=True)
-        data_to_process = self.users.about_me.tolist()
-        self.extractor_tfidf_users.fit(self.users.about_me.tolist())
+        # Generate column name based on number of keywords
+        self.tags_columns = [f"tag{i}" for i in range(1, nb_keywords + 1)]
+
+        # A lot of about me are missing, get non-null data
+        users_valid_about_me = self.users[~self.users.about_me.isna()].reset_index(drop=True)
+        users_invalid_about_me = self.users[self.users.about_me.isna()]
+        data_to_process = users_valid_about_me.about_me.tolist()
+
+        # Fit tfidf extractor
+        self.extractor_tfidf_users.fit(data_to_process)
+
         logger.info("Start extracting keywords from users")
         keywords = self._batch_tfidf(extractor=self.extractor_tfidf_users, data_to_batch=data_to_process)
+        # Create df with 1 keywords = 1 column (per doc)
         keywords_df = pd.DataFrame(keywords, columns=self.tags_columns)
-        self.users_keywords_df = pd.concat([self.users, keywords_df], axis=1)
+        # Associate each row containing keywords with corresponding user id
+        users_keywords_df = pd.concat([users_valid_about_me, keywords_df], axis=1)
+        # Re integrate users with no value on about me
+        self.users_keywords_df = pd.concat([users_invalid_about_me, users_keywords_df], ignore_index=True)
         logger.info(f"users_keywords_df shape: {self.users_keywords_df.shape}")
         self.next(self.join)
 
     @step
     def extract_questions_keywords_tfidf(self) -> None:
         """Extract keywords from question textual data using tfidf"""
-        nb_keywords = self.config.get("nb_keywords")
-        self.tags_columns = [f"tags{i}" for i in range(1, nb_keywords + 1)]
+        # Get data to process
         data_to_process = self.questions.title.tolist()
-        self.extractor_tfidf_questions.fit(self.questions.title.tolist())
+        # Fit tfidf extractor
+        self.extractor_tfidf_questions.fit(data_to_process)
+
         logger.info("Start extracting keywords from questions")
         keywords = self._batch_tfidf(extractor=self.extractor_tfidf_questions, data_to_batch=data_to_process)
+        # Create df with 1 keywords = 1 column (per doc)
         keywords_df = pd.DataFrame(keywords, columns=self.tags_columns)
+        # Associate each row containing keywords with corresponding user id
         self.questions_keywords_df = pd.concat([self.questions, keywords_df], axis=1)
         logger.info(f"questions_keywords_df shape: {self.questions_keywords_df.shape}")
         self.next(self.join)
@@ -152,7 +166,6 @@ class TextProcessingFlow(FlowSpec):
     @step
     def join(self, inputs) -> None:  # type: ignore
         """Merge data artifact"""
-        self.tags_columns = inputs.extract_questions_keywords_tfidf.tags_columns
         self.extractor_tfidf_questions = inputs.extract_questions_keywords_tfidf.extractor_tfidf_questions
         self.extractor_tfidf_users = inputs.extract_users_keywords_tfidf.extractor_tfidf_users
         self.merge_artifacts(
