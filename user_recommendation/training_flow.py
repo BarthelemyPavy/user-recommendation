@@ -61,6 +61,12 @@ class TrainingModelFlow(FlowSpec):
         help="Config file path for training params",
         default=str(Path(__file__).parent / "conf" / "config.yml"),
     )
+    reduce_train_set = Parameter(
+        "reduce_train_set",
+        help="expecting a float 0<x<=1 defining the rate of training set to keep. This could be use for reduce the training time.",
+        default=0,
+        type=float,
+    )
 
     @step
     def start(self) -> None:
@@ -122,6 +128,20 @@ class TrainingModelFlow(FlowSpec):
     def build_interactions(self) -> None:
         """Build interactions for training, test and validation data"""
         from user_recommendation.training.lightfm_processing import get_interactions
+        from sklearn.model_selection import train_test_split
+
+        if self.reduce_train_set > 0:
+            logger.warning(
+                f"""A reduce_train_set value is passed (={self.reduce_train_set}).
+                           This means that the train dataset will be reduced by {(1-self.reduce_train_set)*100}%"""
+            )
+            self.datasets.training, _ = train_test_split(
+                self.datasets.training,
+                test_size=(1 - self.reduce_train_set),
+                random_state=self.config.get("random_state"),
+                stratify=self.datasets.training.question_label,
+            )
+            logger.info(f"New Training dataset shape: {self.datasets.training.shape}")
 
         self.training_interactions_weigths = get_interactions(  # type: ignore
             data=self.datasets.training, dataset=self.lightfm_dataset, with_weights=True, obj_desc="training"
