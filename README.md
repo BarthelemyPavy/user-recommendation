@@ -27,48 +27,48 @@ Check relevant section according to your need, i.e if you use your **laptop envi
 ### Laptop environment
 
 1. Clone the project on your laptop using:
-```
+```bash
 git clone git@github.com:BarthelemyPavy/user-recommendation.git
 ```
 2. Create a virtual environment, to do so make sure to be at the root directory of the project (same level than pyproject.toml) and run:
-```
+```bash
 poetry install
 source .venv/bin/activate
 ```
 3. Download nltk resources
-```
+```bash
 poetry run nltk_resources
 ```
 or
-```
+```bash
 ./post_install.sh
 ```
 4. Download Stack Overflow data
-```
+```bash
 poetry run download_data
 ```
 
 ### Docker
 1. Clone the project on your laptop using:
-```
+```bash
 git clone git@github.com:BarthelemyPavy/user-recommendation.git
 ```
 2. Build Docker Image
-```
+```bash
 docker build -f Dockerfile -t user_recommendation .
 ```
 Or
-```
+```bash
 sudo docker build -f Dockerfile -t user_recommendation .
 ```
 Depend on your install.
 
 3. Docker run
-```
+```bash
 docker run -it --name user_recommendation -p 8085:8085 --mount type=bind,src=$(pwd),dst=/home/user/user_recommendation/ --entrypoint bash user_recommendation
 ```
 Or
-```
+```bash
 sudo docker run -it --name user_recommendation -p 8085:8085 --mount type=bind,src=$(pwd),dst=/home/user/user_recommendation/ --entrypoint bash user_recommendation
 ```
 Now, you should be in a terminal into the container.
@@ -77,22 +77,22 @@ Now, you should be in a terminal into the container.
 
 Make sure to be at the root directory of the project (same level than pyproject.toml) and run:
 
-```
+```bash
 poetry install
 source .venv/bin/activate
 ```
 5. Download nltk resources
-```
+```bash
 poetry run nltk_resources
 ```
 or
-```
+```bash
 ./post_install.sh
 ```
 
 6. Download Stack Overflow data
 
-```
+```bash
 poetry run download_data
 ```
 ___
@@ -111,7 +111,7 @@ We use:
 
 Also some shortcuts are available to check your code quality:
 
-```
+```bash
 # Format all your project
 poetry run fmt
 
