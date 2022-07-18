@@ -1,6 +1,8 @@
 """Use tf-idf to process text and extract relevant information for cold start recommendations"""
+import re
 from __future__ import annotations
-from typing import Iterator, Optional, TypeVar
+from typing import Optional, TypeVar
+from bs4 import BeautifulSoup
 import numpy as np
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -31,6 +33,51 @@ class Lemmatizer(BaseEstimator, TransformerMixin):
         """
         return self
 
+    def _clean_text(self, text: str) -> str:
+        """Get an noisy text in input and remove html tags and url
+
+        Args:
+            text: Unclean input text
+
+        Returns:
+            str: Clean text
+        """
+        text = self.remove_url_and_number(text)
+        text = self.parse_html_tags(text)
+
+        return text
+
+    @staticmethod
+    def parse_html_tags(text: str) -> str:
+        """Get a text containing html tags and remove it
+
+        Args:
+            text: Unclean text containing html tags
+
+        Returns:
+            str: Clean text without html tags
+        """
+        to_return = text
+        if isinstance(text, str):
+            to_return = BeautifulSoup(text, "lxml").text
+        return to_return
+
+    @staticmethod
+    def remove_url_and_number(text: str) -> str:
+        """Get a text containing url or number and remove it
+
+        Args:
+            text: Unclean text containing url or number
+
+        Returns:
+            str: Clean text without url and number
+        """
+        to_return = text
+        if isinstance(text, str):
+            text = re.sub(r"^https?:\/\/.*[\r\n]*", "", text, flags=re.MULTILINE)
+            text = re.sub("^\d+\s|\s\d+\s|\s\d+$", "", text, flags=re.MULTILINE)
+        return to_return
+
     def _lemmatize(self, text: str) -> str:
         """Take a string and lemmatize it
 
@@ -52,7 +99,7 @@ class Lemmatizer(BaseEstimator, TransformerMixin):
         Returns:
             list[str]: list of string lemmatized
         """
-        return [self._lemmatize(text) for text in X]
+        return [self._lemmatize(self._clean_text(text)) for text in X]
 
 
 class TfidfTransformerExtractor(TfidfTransformer):
