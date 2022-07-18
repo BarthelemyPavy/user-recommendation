@@ -328,6 +328,8 @@ class TrainingModelFlow(FlowSpec):
 
 
 def flow_trigger(**kwargs: dict[str, str]) -> None:
+    """Use Metaflow tag argument to choose which flow to trigger.
+    It's a workaround and not recommended."""
     tag: str = kwargs.get("tag")  # type: ignore
     flow_tag = string_to_enum(tag, EFlowTags, InvalidTag, logger)
     if flow_tag == EFlowTags.SPLIT_DATASET:

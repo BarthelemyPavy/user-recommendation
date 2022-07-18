@@ -11,6 +11,7 @@ class UserRecommendationErrorCode(IntEnum):
         INPUT_DATA_ERROR: see
         BAD_EVALUATION_METRIC: see
         INVALID_TAG: see InvalidTag
+        KEYWORD_EXTRACTOR_ERROR: see KeywordExtractorError
     """
 
     UNKNOWN = -1
@@ -18,6 +19,7 @@ class UserRecommendationErrorCode(IntEnum):
     INPUT_DATA_ERROR = auto()
     BAD_EVALUATION_METRIC = auto()
     INVALID_TAG = auto()
+    KEYWORD_EXTRACTOR_ERROR = auto()
 
 
 class UserRecommendationException(Exception):
@@ -92,6 +94,7 @@ class MissingAttribute(UserRecommendationException):
             str: Formatted error message.
 
         """
+
         suffix = f" Use one of the following:\n{self._valid_attributes}" if self._valid_attributes else ""
         return super().__str__() + f"{self._attribute} is unknown.{suffix}"
 
@@ -178,4 +181,25 @@ class InvalidTag(UserRecommendationException):
             str: Formatted error message.
 
         """
-        return f"Tag {self._bad_name} unknown, use one of the following identifiers:\n{self._doc}"
+        return super().__str__() + f"Tag {self._bad_name} unknown, use one of the following identifiers:\n{self._doc}"
+
+
+class KeywordExtractorError(UserRecommendationException):
+    """Exception raised if something went wrong using keyword extractor"""
+
+    def __init__(self, msg: str) -> None:
+        """Initialize error.
+        Args:
+            msg: message to raise
+        """
+        super().__init__(UserRecommendationErrorCode.KEYWORD_EXTRACTOR_ERROR)
+        self._msg = msg
+
+    def __str__(self) -> str:
+        """Overridden __str__ method.
+
+        Returns
+            str: Formatted error message.
+
+        """
+        return super().__str__() + f"{self._msg}"
