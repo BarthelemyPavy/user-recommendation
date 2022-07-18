@@ -73,7 +73,7 @@ class MissingAttribute(UserRecommendationException):
 
     """
 
-    _valid_attributes: Optional[str]
+    _valid_attributes: Optional[str] = None
 
     def __init__(self, attribute: str, valid_attributes: Optional[list[str]] = None) -> None:
         """Initialize error.
@@ -94,7 +94,6 @@ class MissingAttribute(UserRecommendationException):
             str: Formatted error message.
 
         """
-
         suffix = f" Use one of the following:\n{self._valid_attributes}" if self._valid_attributes else ""
         return super().__str__() + f"{self._attribute} is unknown.{suffix}"
 

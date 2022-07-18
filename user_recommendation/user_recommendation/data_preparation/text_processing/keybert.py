@@ -1,5 +1,6 @@
 """Use KeyBERT to process text and extract relevant information for cold start recommendations"""
 from typing import Iterator, List, Optional, Tuple, Union
+from tqdm import tqdm
 from keybert import KeyBERT
 from sklearn.feature_extraction.text import CountVectorizer
 
@@ -9,8 +10,8 @@ class KeyBERTExtractor(KeyBERT):
 
     _batch_size: Optional[int]
 
-    @classmethod
-    def _batch_generator(cls, docs: list[str], batch_size: int) -> Iterator[list[str]]:
+    @staticmethod
+    def batch_generator(docs: list[str], batch_size: int) -> Iterator[list[str]]:
         """Generate batch to process
 
         Args:
@@ -21,7 +22,7 @@ class KeyBERTExtractor(KeyBERT):
             Iterator[list[str]]: Generated batch
         """
         docs_len = len(docs)
-        for idx in range(0, docs_len, batch_size):
+        for idx in tqdm(range(0, docs_len, batch_size)):
             yield docs[idx : min(idx + batch_size, docs_len)]
 
     @staticmethod
@@ -121,7 +122,7 @@ class KeyBERTExtractor(KeyBERT):
         """
         if self._batch_size:
             keywords = []
-            for docs_batch in self._batch_generator(docs, self._batch_size):
+            for docs_batch in self.batch_generator(docs, self._batch_size):
                 keywords.extend(
                     super()._extract_keywords_multiple_docs(
                         docs_batch, keyphrase_ngram_range, stop_words, top_n, min_df, vectorizer

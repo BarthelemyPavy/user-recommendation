@@ -1,6 +1,6 @@
 """Use tf-idf to process text and extract relevant information for cold start recommendations"""
 from __future__ import annotations
-from typing import Optional, TypeVar
+from typing import Iterator, Optional, TypeVar
 import numpy as np
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -58,19 +58,41 @@ class Lemmatizer(BaseEstimator, TransformerMixin):
 class TfidfTransformerExtractor(TfidfTransformer):
     """Inherit from TfidfTransformer"""
 
-    def transform(self, X: SklearnType, top_n: int = 5, copy: bool = True) -> npt.NDArray[np.int_]:
+    _batch_size: int = 256
+
+    def __init__(
+        self,
+        *,
+        norm: str = "l2",
+        use_idf: bool = True,
+        smooth_idf: bool = True,
+        sublinear_tf: bool = False,
+        top_n: int = 5,
+    ) -> None:
+        """_summary_
+
+        Args:
+            norm: _description_. Defaults to "l2".
+            use_idf: _description_. Defaults to True.
+            smooth_idf: _description_. Defaults to True.
+            sublinear_tf: _description_. Defaults to False.
+            top_n: Number of keyword to keep per document. Defaults to 5.
+        """
+        super().__init__(norm=norm, use_idf=use_idf, smooth_idf=smooth_idf, sublinear_tf=sublinear_tf)
+        self._top_n = top_n
+
+    def transform(self, X: SklearnType, copy: bool = True) -> npt.NDArray[np.int_]:
         """Override transform method to keep only top n keywords
 
         Args:
             X: See parent doc
-            top_n: Number of keyword to keep per document. Defaults to 5.
             copy: See parent doc. Defaults to True.
 
         Returns:
             npt.NDArray[np.int_]: array order and filter
         """
         sparse_matrix = super().transform(X, copy)
-        tfidf_sorting = np.apply_along_axis(
-            lambda x: np.argsort(x)[-min(top_n, x.size) : :], 1, sparse_matrix.toarray()
-        )
-        return tfidf_sorting
+        sparse_matrix = sparse_matrix.toarray()
+
+        tfidf_order = np.apply_along_axis(lambda x: np.argsort(x)[-min(self._top_n, x.size) : :], 1, sparse_matrix)
+        return tfidf_order

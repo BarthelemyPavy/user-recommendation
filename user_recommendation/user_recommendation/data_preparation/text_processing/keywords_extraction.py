@@ -57,26 +57,30 @@ class KeywordsExtractor:
 
         """
         if extraction_method == EKeywordExtractorTag.TFIDF:
+            tfidf = TfidfTransformerExtractor(top_n=kwargs.get("top_n", 5))  # type: ignore
+            kwargs.pop("top_n", None)
             self._model = Pipeline(
                 [
                     ("lemma", Lemmatizer()),
                     ('vect', CountVectorizer(**kwargs)),
-                    ('tfidf', TfidfTransformerExtractor()),
+                    ('tfidf', tfidf),
                 ]
             )
         elif extraction_method == EKeywordExtractorTag.KEYBERT:
             self._model = KeyBERTExtractor(kwargs.get("model")) if "model" in kwargs else KeyBERTExtractor()
             self._keyphrase_vectorizer = KeyphraseCountVectorizer(pos_pattern="<N.*>", spacy_exclude=["parser", "ner"])
 
-    def fit(self, data: Union[pd.Series[str], npt.NDArray[np.str_], list[str]]) -> None:
+    def fit(self, data: Union[pd.Series, npt.NDArray[np.str_], list[str]]) -> None:
         """Fit method, require for tfidf extractor
 
         Args:
             data: Data to process
         """
+        logger.info("Fit of KeywordsExtractor is running")
         if isinstance(self._model, Pipeline):
             self._model.fit(data)
             self._feature_array = self._model["vect"].get_feature_names_out()
+        logger.info("Fit Done")
 
     @staticmethod
     def _partial_extract_keywords(  # type: ignore
@@ -93,8 +97,8 @@ class KeywordsExtractor:
         return partial(model, vectorizer=vectorizer)
 
     def transform(
-        self, data: Union[pd.Series[str], npt.NDArray[np.str_], list[str]], **kwargs: str
-    ) -> Union[pd.Series[str], npt.NDArray[np.str_], list[str]]:
+        self, data: Union[pd.Series, npt.NDArray[np.str_], list[str]], **kwargs: str
+    ) -> Union[pd.Series, npt.NDArray[np.str_], list[str]]:
         """Take data to process in input and return best keywords as output
 
         Args:
@@ -119,7 +123,7 @@ class KeywordsExtractor:
                         batch_size: Define a batch size if extraction need to be batch. Defaults to None.
 
         Returns:
-            Union[pd.Series[str], npt.NDArray[np.str_], list[str]]: _description_
+            Union[pd.Series, npt.NDArray[np.str_], list[str]]: _description_
         """
         try:
             if isinstance(self._model, Pipeline):
@@ -133,19 +137,15 @@ class KeywordsExtractor:
                         ),
                         original_err=error,
                     )
-                if self._feature_array:
-                    keywords = (
-                        self._feature_array[self._model.transform(data, top_n=kwargs.get("top_n"))]
-                        if "top_n" in kwargs
-                        else self._feature_array[self._model.transform(data)]
-                    )
-                else:
+                if not isinstance(self._feature_array, np.ndarray):
                     log_raise(
                         logger=logger,
                         err=KeywordExtractorError(
                             "Error from tfidf extraction. Seems that feature array doesn't get from vectorizer"
                         ),
                     )
+                else:
+                    keywords = self._feature_array[self._model.transform(data)]
 
             elif isinstance(self._model, KeyBERTExtractor):
                 extract_keywords = self._partial_extract_keywords(self._model, self._keyphrase_vectorizer)
@@ -159,22 +159,3 @@ class KeywordsExtractor:
                 original_err=error,
             )
         return keywords
-
-
-def get_tfidf_pipeline(stop_words: str, strip_accents: str) -> Pipeline:
-    """Create and return sklearn pipeline
-
-    Args:
-        stop_words (str): _description_
-        strip_accents (str): _description_
-
-    Returns:
-        Pipeline: _description_
-    """
-    return Pipeline(
-        [
-            ("lemma", Lemmatizer()),
-            ('vect', CountVectorizer(stop_words=stop_words, strip_accents=strip_accents)),
-            ('tfidf', TfidfTransformerExtractor()),
-        ]
-    )
