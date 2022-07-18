@@ -39,7 +39,7 @@ def get_lightfm_dataset(
         logger.info("Fit partial dataset for users features")
         dataset.fit_partial(
             items=(users_id for users_id in users.id.tolist()),
-            item_features=(list(set(users[columns].values.flatten()))),
+            item_features=(users[columns].values.flatten()),
         )
     if isinstance(questions, pd.DataFrame):
         if not tags_columns:
@@ -50,7 +50,7 @@ def get_lightfm_dataset(
             logger.info("Fit partial dataset for questions features")
             dataset.fit_partial(
                 users=(question_id for question_id in questions.question_id.tolist()),
-                user_features=(list(set(questions[tags_columns].values.flatten()))),
+                user_features=(questions[tags_columns].values.flatten()),
             )
     return dataset
 

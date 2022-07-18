@@ -103,6 +103,156 @@ class LigthFMTrainer:
             )
         return to_return
 
+    def _track_model(
+        self,
+        train_interactions: COOMatrix,
+        test_interactions: COOMatrix,
+        validation_metrics: Optional[list[str]] = None,
+        epochs: int = 1,
+        num_threads: int = 1,
+        show_plot: bool = True,
+        **kwargs: int,
+    ) -> Tuple[LightFM, pd.DataFrame, Optional[Plot]]:
+        """Function to record model's performance at each epoch, formats the performance into tidy format,
+        plots the performance and outputs the performance data.
+        Args:
+            train_interactions: train interactions set
+            test_interactions: test interaction set
+            epochs: Number of epochs to run, optional
+            num_threads: Number of parallel threads to use, optional
+            **kwargs: other keyword arguments to be passed down
+        Returns:
+            LightFM model, pandas.DataFrame, matplotlib axes:
+            - Best Fitted model based on test auc
+            - Performance traces of the fitted model
+            - Side effect of the method
+        """
+        if not validation_metrics:
+            validation_metrics = ["auc"]
+        else:
+            # Because auc it's used to keep the best model during training stage
+            validation_metrics = validation_metrics + ["auc"] if "auc" not in validation_metrics else validation_metrics
+        # initialising temp data storage
+        model_track = pd.DataFrame(columns=["epoch", "stage", "metric", "value"])
+        # default value for best model selection
+        best_model, best_auc_eval = None, -1
+
+        # fit model and store train/test metrics at each epoch
+        loop_epoch = tqdm(range(epochs))
+        loop_epoch.set_description(f"Training Epoch")
+        for epoch in loop_epoch:
+            self._model.fit_partial(interactions=train_interactions, epochs=1, num_threads=num_threads, **kwargs)
+
+            model_track = self._loop_over_evaluation_metrics(
+                metric_storage=model_track,
+                train_interactions=train_interactions,
+                test_interactions=test_interactions,
+                validation_metrics=validation_metrics,
+                epoch=epoch,
+                **kwargs,
+            )
+
+            last_auc_value = (
+                model_track[(model_track.stage == "test") & (model_track.metric == "auc")].value.tail(1).item()
+            )
+            if last_auc_value > best_auc_eval:
+                best_model, best_auc_eval = self._model, last_auc_value
+
+        self._model = best_model
+        # replace the metric keys to improve visualisation
+        metric_keys = {"precision": "Precision", "recall": "Recall", "auc": "ROC AUC"}
+        model_track.metric.replace(metric_keys, inplace=True)
+        # plots the performance data
+        plot = None
+        if show_plot:
+            plot = self._model_perf_plots(model_track)
+        return self, model_track, plot
+
+    def _loop_over_evaluation_metrics(
+        self,
+        metric_storage: pd.DataFrame,
+        train_interactions: COOMatrix,
+        test_interactions: COOMatrix,
+        validation_metrics: list[str],
+        epoch: int,
+        **kwargs: int,
+    ) -> pd.DataFrame:
+        """Loop over evaluation metrics in order to evaluate model on train and validation test for each epoch
+
+        Args:
+            metric_storage: Storage to save evaluation scores
+            validation_metrics: List of metrics
+
+        Returns:
+            pd.DataFrame: All evaluation scores
+        """
+        loop_metrics = tqdm(validation_metrics)
+        loop_metrics.set_description(f"Iterate over evaluation metrics")
+        kwargs.pop("sample_weight", None)
+        for metric in loop_metrics:
+            logger.info(f"Evaluate training at epoch: {str(epoch)} with metric: {metric}")
+            eval_kwargs = copy.deepcopy(kwargs)
+            try:
+                if metric == "auc":
+                    eval_kwargs.pop("k", None)
+                train_metric = self.evaluation_step(
+                    test_interactions=train_interactions, func=self._AVAILABLE_VALIDATION.get(metric), **eval_kwargs  # type: ignore
+                )
+                metric_storage = metric_storage.append(
+                    {"epoch": epoch, "stage": "train", "metric": metric, "value": train_metric}, ignore_index=True
+                )
+                test_metric = self.evaluation_step(
+                    test_interactions=test_interactions,
+                    func=self._AVAILABLE_VALIDATION.get(metric),  # type: ignore
+                    train_interactions=train_interactions,
+                    **eval_kwargs,
+                )
+                metric_storage = metric_storage.append(
+                    {"epoch": epoch, "stage": "test", "metric": metric, "value": test_metric}, ignore_index=True
+                )
+            except KeyError as err:
+                log_raise(
+                    logger=logger,
+                    err=BadEvaluationMetric(metric=metric, available_metrics=list(self._AVAILABLE_VALIDATION.keys())),
+                    original_err=err,
+                )
+        return metric_storage
+
+    def evaluation_step(
+        self,
+        test_interactions: COOMatrix,
+        func: EvaluationFuncType,  # type: ignore
+        train_interactions: Optional[COOMatrix] = None,
+        **kwargs: int,
+    ) -> float:
+        """Evaluate model
+
+        Args:
+            test_interactions: see fit docstring
+            train_interactions: see fit docstring
+            func: evaluation function to call
+
+        Returns:
+            float: metric compute by evaluation func
+        """
+        val_metric: float = func(self._model, test_interactions, train_interactions, **kwargs).mean()
+        return val_metric
+
+    @staticmethod
+    def _model_perf_plots(df: pd.DataFrame) -> Plot:
+        """Function to plot model performance metrics.
+
+        Args:
+            df: Dataframe in tidy format, with ['epoch','level','value'] columns
+
+        Returns:
+            object: matplotlib axes
+        """
+        g = sns.FacetGrid(df, col="metric", hue="stage", col_wrap=2, sharey=False)
+        g = g.map(sns.scatterplot, "epoch", "value").add_legend()
+        fig: Plot = g.figure
+        return fig
+
     def predict_rank(
         self,
         data: pd.DataFrame,
@@ -185,125 +335,3 @@ class LigthFMTrainer:
         )
 
         return all_predictions[["question_id", "user_id", "prediction"]]
-
-    def _track_model(
-        self,
-        train_interactions: COOMatrix,
-        test_interactions: COOMatrix,
-        validation_metrics: Optional[list[str]] = None,
-        epochs: int = 1,
-        num_threads: int = 1,
-        show_plot: bool = True,
-        **kwargs: int,
-    ) -> Tuple[LightFM, pd.DataFrame, Optional[Plot]]:
-        """Function to record model's performance at each epoch, formats the performance into tidy format,
-        plots the performance and outputs the performance data.
-        Args:
-            train_interactions: train interactions set
-            test_interactions: test interaction set
-            epochs: Number of epochs to run, optional
-            num_threads: Number of parallel threads to use, optional
-            **kwargs: other keyword arguments to be passed down
-        Returns:
-            LightFM model, pandas.DataFrame, matplotlib axes:
-            - Best Fitted model based on test auc
-            - Performance traces of the fitted model
-            - Side effect of the method
-        """
-        if not validation_metrics:
-            validation_metrics = ["auc"]
-        else:
-            validation_metrics = validation_metrics + ["auc"] if "auc" not in validation_metrics else validation_metrics
-        # initialising temp data storage
-        model_track = pd.DataFrame(columns=["epoch", "stage", "metric", "value"])
-        # default value for best model selection
-        best_model, best_auc_eval = None, -1
-
-        # fit model and store train/test metrics at each epoch
-        loop_epoch = tqdm(range(epochs))
-        loop_epoch.set_description(f"Training Epoch")
-        for epoch in loop_epoch:
-            self._model.fit_partial(interactions=train_interactions, epochs=1, num_threads=num_threads, **kwargs)
-
-            loop_metrics = tqdm(validation_metrics)
-            loop_metrics.set_description(f"Iterate over evaluation metrics")
-            for metric in loop_metrics:
-                logger.info(f"Evaluate training at epoch: {str(epoch)} with metric: {metric}")
-                eval_kwargs = copy.deepcopy(kwargs)
-                eval_kwargs.pop("sample_weight", None)
-                try:
-                    if metric == "auc":
-                        eval_kwargs.pop("k", None)
-                    train_metric = self.evaluation_step(
-                        test_interactions=train_interactions, func=self._AVAILABLE_VALIDATION.get(metric), **eval_kwargs  # type: ignore
-                    )
-                    model_track = model_track.append(
-                        {"epoch": epoch, "stage": "train", "metric": metric, "value": train_metric}, ignore_index=True
-                    )
-                    test_metric = self.evaluation_step(
-                        test_interactions=test_interactions,
-                        func=self._AVAILABLE_VALIDATION.get(metric),  # type: ignore
-                        train_interactions=train_interactions,
-                        **eval_kwargs,
-                    )
-                    model_track = model_track.append(
-                        {"epoch": epoch, "stage": "test", "metric": metric, "value": test_metric}, ignore_index=True
-                    )
-                except KeyError as err:
-                    log_raise(
-                        logger=logger,
-                        err=BadEvaluationMetric(
-                            metric=metric, available_metrics=list(self._AVAILABLE_VALIDATION.keys())
-                        ),
-                        original_err=err,
-                    )
-            last_auc_value = (
-                model_track[(model_track.stage == "test") & (model_track.metric == "auc")].value.tail(1).item()
-            )
-            if last_auc_value > best_auc_eval:
-                best_model, best_auc_eval = self._model, last_auc_value
-
-        self._model = best_model
-        # replace the metric keys to improve visualisation
-        metric_keys = {"precision": "Precision", "recall": "Recall", "auc": "ROC AUC"}
-        model_track.metric.replace(metric_keys, inplace=True)
-        # plots the performance data
-        plot = None
-        if show_plot:
-            plot = self._model_perf_plots(model_track)
-        return self, model_track, plot
-
-    def evaluation_step(
-        self,
-        test_interactions: COOMatrix,
-        func: EvaluationFuncType,  # type: ignore
-        train_interactions: Optional[COOMatrix] = None,
-        **kwargs: int,
-    ) -> float:
-        """Evaluate model
-
-        Args:
-            test_interactions: see fit docstring
-            train_interactions: see fit docstring
-            func: evaluation function to call
-
-        Returns:
-            float: metric compute by evaluation func
-        """
-        val_metric: float = func(self._model, test_interactions, train_interactions, **kwargs).mean()
-        return val_metric
-
-    @staticmethod
-    def _model_perf_plots(df: pd.DataFrame) -> Plot:
-        """Function to plot model performance metrics.
-
-        Args:
-            df: Dataframe in tidy format, with ['epoch','level','value'] columns
-
-        Returns:
-            object: matplotlib axes
-        """
-        g = sns.FacetGrid(df, col="metric", hue="stage", col_wrap=2, sharey=False)
-        g = g.map(sns.scatterplot, "epoch", "value").add_legend()
-        fig: Plot = g.figure
-        return fig
