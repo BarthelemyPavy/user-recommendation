@@ -94,12 +94,15 @@ Require that Train Test Split flow was run previously.
 ---
 
 
-| Argument Name    | Description                                                                                                                                                                                                             | Required | Default                             |
-|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-------------------------------------|
-| random_state | Secure the reproducibility of a run                                                                                                                                                                                     | False    | 42                                  |
-| config_path  | Config file path for training params                                                                                                                                                                                    | False    | user_recommendation/conf/config.yml |
-| is_tracked   | Boolean defining if model performances are monitoring during the training for each epoch.  For the moment only evaluation metrics surch as AUC, precision at k and recall at k are available.NB: This is time consuming | False    | True                                |
-| show_plot    | If **is_tracked=True**. Define if monitored metrics are plotted or not                                                                                                                                                  | False    | True                                |
+| Argument Name        | Description                                                                                                                                                                                                             | Required | Default                             |
+|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-------------------------------------|
+| random_state     | Secure the reproducibility of a run                                                                                                                                                                                     | False    | 42                                  |
+| config_path      | Config file path for training params                                                                                                                                                                                    | False    | user_recommendation/conf/config.yml |
+| is_tracked       | Boolean defining if model performances are monitoring during the training for each epoch.  For the moment only evaluation metrics surch as AUC, precision at k and recall at k are available.NB: This is time consuming | False    | True                                |
+| show_plot        | If **is_tracked=True**. Define if monitored metrics are plotted or not                                                                                                                                                  | False    | True                                |
+| reduce_train_set | A float between 0 <= x < 1, the rate of training set to keep. This could be use for reduce the training time, or perform a search on hyperparameters.                                                                   | False    | 0                                   |
+
+
 
 Before running the flow, you have the possibility to visualize it in your terminal in a pipeline format including explaination for each step.
 
