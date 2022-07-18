@@ -98,7 +98,7 @@ poetry run download_data
 ___
 ## Execution
 
-For information about job executions, please check [this page](./doc/source/content/execution.rst)
+For information about job executions, please check [this page](./doc/source/content/execution.md)
 
 ___
 ### Code style
