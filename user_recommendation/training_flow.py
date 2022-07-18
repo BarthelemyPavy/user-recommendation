@@ -1,5 +1,6 @@
 """File where Training Flow is defined"""
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from metaflow import FlowSpec, step, Parameter, card, current
 from metaflow.cards import Image, Artifact, Markdown
@@ -54,18 +55,28 @@ class TrainingModelFlow(FlowSpec):
         from metaflow import Flow, get_metadata
 
         logger.info(f"Using metadata provider: {get_metadata()}")
-
-        run = Flow("GenerateTrainTestValFlow").latest_successful_run
-        self.datasets = run.data.datasets
+        # Get data artifacts from GenerateTrainTestValFlow
+        run_test_train_split = Flow("GenerateTrainTestValFlow").latest_successful_run
+        self.datasets = run_test_train_split.data.datasets
         logger.info("Get training, test, validation datasets")
         for fname, df in self.datasets:
             logger.info(f"{fname} shape: {df.shape}")
-        self.answers = run["read_data"].task.data.answers
+        self.answers = run_test_train_split["read_data"].task.data.answers
         logger.info(f"Get answers dataframe {self.answers.shape}")
-        self.questions = run["read_data"].task.data.questions
+        self.questions = run_test_train_split["read_data"].task.data.questions
         logger.info(f"Get questions dataframe {self.questions.shape}")
-        self.users = run["read_data"].task.data.users
+        self.users = run_test_train_split["read_data"].task.data.users
         logger.info(f"Get users dataframe {self.users.shape}")
+
+        # Get data artifacts from TextProcessingFlow
+        run_text = Flow("TextProcessingFlow").latest_successful_run
+        self.questions_keywords_df = run_text["join"].task.data.questions_keywords_df
+        logger.info(f"Get questions_keywords_df dataframe {self.questions_keywords_df.shape}")
+        self.users_keywords_df = run_text["join"].task.data.users_keywords_df
+        logger.info(f"Get users_keywords_df dataframe {self.users_keywords_df.shape}")
+        self.tags_columns = run_text["join"].task.data.tags_columns
+        logger.info(f"Number of tags per question/user {len(self.tags_columns)}")
+
         self.next(self.load_config)
 
     @step
@@ -84,7 +95,12 @@ class TrainingModelFlow(FlowSpec):
         """Build lightfm dataset from answers database"""
         from user_recommendation.training.lightfm_processing import get_lightfm_dataset
 
-        self.lightfm_dataset = get_lightfm_dataset(self.answers)
+        self.lightfm_dataset = get_lightfm_dataset(
+            self.answers,
+            users=self.users_keywords_df,
+            questions=self.questions_keywords_df,
+            tags_columns=self.tags_columns,
+        )
         self.next(self.build_interactions)
 
     @step
@@ -100,6 +116,26 @@ class TrainingModelFlow(FlowSpec):
         )
         self.validation_interactions_weigths = get_interactions(  # type: ignore
             data=self.datasets.validation, dataset=self.lightfm_dataset, with_weights=False, obj_desc="validation"
+        )
+        self.next(self.build_user_features)
+
+    @step
+    def build_user_features(self) -> None:
+        """Build users features matrix"""
+        from user_recommendation.training.lightfm_processing import get_users_features
+
+        self.users_features = get_users_features(  # type: ignore
+            data=self.users_keywords_df, dataset=self.lightfm_dataset, tags_column=self.tags_columns
+        )
+        self.next(self.build_questions_features)
+
+    @step
+    def build_questions_features(self) -> None:
+        """Build users features matrix"""
+        from user_recommendation.training.lightfm_processing import get_questions_features
+
+        self.questions_features = get_questions_features(  # type: ignore
+            data=self.questions_keywords_df, dataset=self.lightfm_dataset, tags_column=self.tags_columns
         )
         self.next(self.train_model)
 
@@ -118,6 +154,9 @@ class TrainingModelFlow(FlowSpec):
             num_threads=self.config.get("num_threads"),
             is_tracked=self.is_tracked,
             show_plot=self.show_plot,
+            user_features=self.questions_features,
+            item_features=self.users_features,
+            sample_weight=self.training_interactions_weigths[1],
         )
         current.card.append(Markdown("# Training info  "))
         current.card.append(Markdown(f"Run id {current.run_id}  "))
@@ -159,10 +198,10 @@ class TrainingModelFlow(FlowSpec):
 
         model = self.model_artifacts[0]
         # Subsample questions to apply prediction
-        subsample_questions = self.subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.05)
+        subsample_questions = self.subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.01)
         logger.info(f"{subsample_questions.size} will be predict")
         # Iterate over all users will be too long for an example run. So we will randomly take a sample of users
-        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=3000).tolist()
+        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=50000).tolist()
         subsample_questions["user_id"] = [subsample_users_list for i in subsample_questions.index]
         subsample_questions = subsample_questions.explode("user_id").reset_index(drop=True)
         logger.info(f"Data to predict shape: {subsample_questions.shape}")

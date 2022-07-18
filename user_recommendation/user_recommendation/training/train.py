@@ -230,6 +230,7 @@ class LigthFMTrainer:
             for metric in loop_metrics:
                 logger.info(f"Evaluate training at epoch: {str(epoch)} with metric: {metric}")
                 eval_kwargs = copy.deepcopy(kwargs)
+                eval_kwargs.pop("sample_weight", None)
                 try:
                     if metric == "auc":
                         eval_kwargs.pop("k", None)

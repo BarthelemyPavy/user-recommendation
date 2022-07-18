@@ -4,11 +4,19 @@ from lightfm.data import Dataset
 import pandas as pd
 
 from user_recommendation import logger
+from user_recommendation.utils import log_raise
 
 COOMatrix = TypeVar("COOMatrix")
 
+USERS_NUM_COL: list[str] = ["reputation", "up_votes", "down_votes", "views"]
 
-def get_lightfm_dataset(data: pd.DataFrame) -> Dataset:
+
+def get_lightfm_dataset(
+    data: pd.DataFrame,
+    users: Optional[pd.DataFrame] = None,
+    questions: Optional[pd.DataFrame] = None,
+    tags_columns: Optional[list[str]] = None,
+) -> Dataset:
     """Convert a pandas dataframe to lightfm Dataset
 
     Args:
@@ -24,6 +32,26 @@ def get_lightfm_dataset(data: pd.DataFrame) -> Dataset:
     )
     num_question, num_user = dataset.interactions_shape()
     logger.info(f"Num question: {num_question}, num_user {num_user}.")
+    if isinstance(users, pd.DataFrame):
+        columns = USERS_NUM_COL
+        if tags_columns:
+            columns += tags_columns
+        logger.info("Fit partial dataset for users features")
+        dataset.fit_partial(
+            items=(users_id for users_id in users.id.tolist()),
+            item_features=(list(set(users[columns].values.flatten()))),
+        )
+    if isinstance(questions, pd.DataFrame):
+        if not tags_columns:
+            log_raise(
+                logger=logger, err=ValueError("Arg tags_columns must be filled if questions features want to be used ")
+            )
+        else:
+            logger.info("Fit partial dataset for questions features")
+            dataset.fit_partial(
+                users=(question_id for question_id in questions.question_id.tolist()),
+                user_features=(list(set(questions[tags_columns].values.flatten()))),
+            )
     return dataset
 
 
@@ -47,3 +75,33 @@ def get_interactions(
             for index, row in data.iterrows()
         )
     )
+
+
+def get_questions_features(data: pd.DataFrame, dataset: Dataset, tags_column: list[str]) -> COOMatrix:
+    """Build questions features from lightfm dataset and dataframe
+
+    Args:
+        data: interactions to build
+        dataset: light fm dataset
+
+    Returns:
+        COOMatrix: questions features matrix
+    """
+    logger.info("Building lightfm questions features")
+    columns = ["question_id"] + tags_column
+    return dataset.build_user_features(((row[0], list(row[1:])) for row in data[columns].itertuples(index=False, name=None)))  # type: ignore
+
+
+def get_users_features(data: pd.DataFrame, dataset: Dataset, tags_column: list[str]) -> COOMatrix:
+    """Build users features from lightfm dataset and dataframe
+
+    Args:
+        data: interactions to build
+        dataset: light fm dataset
+
+    Returns:
+        COOMatrix: users features matrix
+    """
+    logger.info(f"Building lightfm users features")
+    columns = ["id"] + tags_column + USERS_NUM_COL
+    return dataset.build_item_features(((row[0], list(row[1:])) for row in data[columns].itertuples(index=False, name=None)))  # type: ignore

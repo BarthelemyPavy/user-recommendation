@@ -16,5 +16,4 @@ text_processing:
   stop_words: "english"
   strip_accents: "unicode"
   nb_keywords: 3
-  # Only for keybert
   batch_size: 256
