@@ -1,15 +1,9 @@
 """Test utils functions"""
 from enum import Enum
-import math
 from unittest import TestCase
-from unittest.mock import patch
-import unittest
-
-import pandas as pd
-import numpy as np
 
 from user_recommendation import logger
-from user_recommendation.utils import string_to_enum, log_attribute_per_dataset
+from user_recommendation.utils import string_to_enum
 from user_recommendation.errors import InvalidTag
 
 
