@@ -306,7 +306,7 @@ class TrainingModelFlow(FlowSpec):
     def generate_report(self) -> None:
         """Generate report with training informations"""
         self.create_card()
-        ogger.info(f"pathspec: {current.pathspec}")
+        logger.info(f"pathspec: {current.pathspec}")
         self.next(self.end)
 
     @step
