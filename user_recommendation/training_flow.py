@@ -138,7 +138,7 @@ class TrainingModelFlow(FlowSpec):
             self.datasets.training, _ = train_test_split(
                 self.datasets.training,
                 test_size=(1 - self.reduce_train_set),
-                random_state=self.config.get("random_state"),
+                random_state=self.random_state,
                 stratify=self.datasets.training.question_label,
             )
             logger.info(f"New Training dataset shape: {self.datasets.training.shape}")
@@ -179,14 +179,17 @@ class TrainingModelFlow(FlowSpec):
         """Initialize models for training"""
         from user_recommendation.training.train import LigthFMTrainer
 
-        self.trainer = LigthFMTrainer(dataset=self.lightfm_dataset, no_components=self.config.get("no_components"))
+        self.trainer_cf = LigthFMTrainer(dataset=self.lightfm_dataset, no_components=self.config.get("no_components"))
+        self.trainer_hybrid = LigthFMTrainer(
+            dataset=self.lightfm_dataset, no_components=self.config.get("no_components")
+        )
         self.next(self.train_model_cf)
 
     @step
     def train_model_cf(self) -> None:
         """Train Ligth FM model"""
 
-        self.model_artifacts_cf = self.trainer.fit(
+        self.model_artifacts_cf = self.trainer_cf.fit(
             train_interactions=self.training_interactions_weigths[0],
             test_interactions=self.validation_interactions_weigths[0],
             epochs=self.config.get("epochs"),
@@ -194,7 +197,6 @@ class TrainingModelFlow(FlowSpec):
             is_tracked=self.is_tracked,
             show_plot=self.show_plot,
             sample_weight=self.training_interactions_weigths[1],
-            reset_state=True,
         )
         self.next(self.train_model_hybrid)
 
@@ -202,7 +204,7 @@ class TrainingModelFlow(FlowSpec):
     def train_model_hybrid(self) -> None:
         """Train Ligth FM model"""
 
-        self.model_artifacts_hybrid = self.trainer.fit(
+        self.model_artifacts_hybrid = self.trainer_hybrid.fit(
             train_interactions=self.training_interactions_weigths[0],
             test_interactions=self.validation_interactions_weigths[0],
             epochs=self.config.get("epochs"),
@@ -212,7 +214,6 @@ class TrainingModelFlow(FlowSpec):
             user_features=self.questions_features,
             item_features=self.users_features,
             sample_weight=self.training_interactions_weigths[1],
-            reset_state=True,
         )
         self.next(self.test_evaluation)
 
@@ -263,7 +264,7 @@ class TrainingModelFlow(FlowSpec):
         subsample_questions = self._subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.01)
         logger.info(f"{subsample_questions.size} will be predict")
         # Iterate over all users will be too long for an example run. So we will randomly take a sample of users
-        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=20000).tolist()
+        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=10000).tolist()
         subsample_questions["user_id"] = [subsample_users_list for i in subsample_questions.index]
         subsample_questions = subsample_questions.explode("user_id").reset_index(drop=True)
         logger.info(f"Data to predict shape: {subsample_questions.shape}")
@@ -298,14 +299,20 @@ class TrainingModelFlow(FlowSpec):
             index=False,
         )
         logger.info(f"Prediction saved at {path}")
-        self.next(self.end)
+        self.next(self.generate_report)
 
     @card(type='blank')
     @step
-    def end(self) -> None:
+    def generate_report(self) -> None:
         """Generate report with training informations"""
-        logger.info(f"pathspec: {current.pathspec}")
         self.create_card()
+        ogger.info(f"pathspec: {current.pathspec}")
+        self.next(self.end)
+
+    @step
+    def end(self) -> None:
+        """"""
+        pass
 
     def create_card(self) -> None:
         """Create card resuming all training models"""
@@ -333,7 +340,9 @@ class TrainingModelFlow(FlowSpec):
             current.card.append(Artifact(self.model_artifacts_cf[1]))
             if self.show_plot:
                 current.card.append(Markdown("### Tracked Metrics Plot "))
-                current.card.append(Image.from_matplotlib(self.model_artifacts_cf[-1]))
+                current.card.append(
+                    Image.from_matplotlib(self.model_artifacts_cf[0].model_perf_plots(self.model_artifacts_cf[1]))
+                )
 
         # Hybrid model
         current.card.append(Markdown("## Hybrid Model  "))
@@ -345,7 +354,11 @@ class TrainingModelFlow(FlowSpec):
             current.card.append(Artifact(self.model_artifacts_hybrid[1]))
             if self.show_plot:
                 current.card.append(Markdown("### Tracked Metrics Plot "))
-                current.card.append(Image.from_matplotlib(self.model_artifacts_hybrid[-1]))
+                current.card.append(
+                    Image.from_matplotlib(
+                        self.model_artifacts_hybrid[0].model_perf_plots(self.model_artifacts_hybrid[1])
+                    )
+                )
 
 
 if __name__ == "__main__":

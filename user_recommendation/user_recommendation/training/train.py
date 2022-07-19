@@ -68,7 +68,7 @@ class LigthFMTrainer:
         is_tracked: bool = True,
         validation_metrics: Optional[list[str]] = None,
         show_plot: bool = True,
-        reset_state: bool = True,
+        reset_state: bool = False,
         **kwargs: int,
     ) -> Tuple[LightFM, Optional[pd.DataFrame], Optional[Plot]]:
         """Fit ligth fm model
@@ -118,7 +118,7 @@ class LigthFMTrainer:
         num_threads: int = 1,
         show_plot: bool = True,
         **kwargs: int,
-    ) -> Tuple[LightFM, pd.DataFrame, Optional[Plot]]:
+    ) -> Tuple[LightFM, pd.DataFrame]:
         """Function to record model's performance at each epoch, formats the performance into tidy format,
         plots the performance and outputs the performance data.
         Args:
@@ -159,7 +159,7 @@ class LigthFMTrainer:
             )
 
             last_auc_value = (
-                model_track[(model_track.stage == "test") & (model_track.metric == "auc")].value.tail(1).item()
+                model_track[(model_track.stage == "validation") & (model_track.metric == "auc")].value.tail(1).item()
             )
             if last_auc_value > best_auc_eval:
                 best_model, best_auc_eval = self._model, last_auc_value
@@ -169,10 +169,10 @@ class LigthFMTrainer:
         metric_keys = {"precision": "Precision", "recall": "Recall", "auc": "ROC AUC"}
         model_track.metric.replace(metric_keys, inplace=True)
         # plots the performance data
-        plot = None
-        if show_plot:
-            plot = self._model_perf_plots(model_track)
-        return self, model_track, plot
+        # plot = None
+        # if show_plot:
+        #     plot = self.model_perf_plots(model_track)
+        return self, model_track
 
     def _loop_over_evaluation_metrics(
         self,
@@ -214,7 +214,7 @@ class LigthFMTrainer:
                     **eval_kwargs,
                 )
                 metric_storage = metric_storage.append(
-                    {"epoch": epoch, "stage": "test", "metric": metric, "value": test_metric}, ignore_index=True
+                    {"epoch": epoch, "stage": "validation", "metric": metric, "value": test_metric}, ignore_index=True
                 )
             except KeyError as err:
                 log_raise(
@@ -245,7 +245,7 @@ class LigthFMTrainer:
         return val_metric
 
     @staticmethod
-    def _model_perf_plots(df: pd.DataFrame) -> Plot:
+    def model_perf_plots(df: pd.DataFrame) -> Plot:
         """Function to plot model performance metrics.
 
         Args:
