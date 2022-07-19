@@ -139,6 +139,9 @@ class TrainingModelFlow(FlowSpec):
         self.training_interactions_weigths = get_interactions(  # type: ignore
             data=self.datasets.training, dataset=self.lightfm_dataset, with_weights=True, obj_desc="training"
         )
+        matrix = self.training_interactions_weigths[0].copy()
+        sparsity = 1.0 - (matrix.count_nonzero() / float(matrix.toarray().size))
+        logger.info(f"Sparsity of the training matrix: {sparsity}")
         self.test_interactions_weigths = get_interactions(  # type: ignore
             data=self.datasets.test, dataset=self.lightfm_dataset, with_weights=True, obj_desc="test"
         )
@@ -273,7 +276,7 @@ class TrainingModelFlow(FlowSpec):
         subsample_questions = self._subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.01)
         logger.info(f"{subsample_questions.size} questions will be predict")
         # Iterate over all users will be too long for an example run. So we will randomly take a sample of users
-        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=10000).tolist()
+        subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=20000).tolist()
         subsample_questions["user_id"] = [subsample_users_list for i in subsample_questions.index]
         subsample_questions = subsample_questions.explode("user_id").reset_index(drop=True)
         logger.info(f"Data to predict shape: {subsample_questions.shape}")

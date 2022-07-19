@@ -1,6 +1,6 @@
 # User Recommendation
 
-This project has goal to predict the most likely user to answer a question, given its title & text.
+The goal ofthis project is to predict the most likely user to answer a question, given its title & text.
 It's based on a dataset from public Stack Overflow posts.
 
 ___
@@ -101,6 +101,26 @@ ___
 For information about job executions, please check [this page](./doc/source/content/execution.md)
 
 ___
+
+## Algorithm
+
+For information about implemented algorithm, please check [this page](./doc/source/content/algorithm.md)
+
+___
+
+## Package Architecture
+
+For information the architecture of the solution, please check [this page](./doc/source/content/flows.md)
+
+___
+
+
+## Next Steps
+
+For information about the next steps, please check [this page](./doc/source/content/next.md)
+
+___
+
 ### Code style
 
 We use:
