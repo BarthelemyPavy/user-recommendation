@@ -46,16 +46,7 @@ class TrainingModelFlow(FlowSpec):
         help="Random state for several application",
         default=42,
     )
-    is_tracked = Parameter(
-        "is_tracked",
-        help="Track model metrics for training stage",
-        default=True,
-    )
-    show_plot = Parameter(
-        "show_plot",
-        help="Plot tracked metrics for training stage",
-        default=True,
-    )
+    is_tracked = Parameter("is_tracked", help="Track model metrics for training stage", default=False, type=bool)
     config_path = Parameter(
         "config_path",
         help="Config file path for training params",
@@ -75,6 +66,7 @@ class TrainingModelFlow(FlowSpec):
 
         logger.info(f"Using metadata provider: {get_metadata()}")
         # Get data artifacts from GenerateTrainTestValFlow
+
         run_test_train_split = Flow("GenerateTrainTestValFlow").latest_successful_run
         self.datasets = run_test_train_split.data.datasets
         logger.info("Get training, test, validation datasets")
@@ -117,9 +109,10 @@ class TrainingModelFlow(FlowSpec):
         from user_recommendation.training.lightfm_processing import get_lightfm_dataset
 
         self.lightfm_dataset = get_lightfm_dataset(
-            self.answers,
-            users=self.users_keywords_df,
-            questions=self.questions_keywords_df,
+            users=self.users,
+            questions=self.questions,
+            user_features=self.users_keywords_df,
+            question_features=self.questions_keywords_df,
             tags_columns=self.tags_columns,
         )
         self.next(self.build_interactions)
@@ -179,24 +172,21 @@ class TrainingModelFlow(FlowSpec):
         """Initialize models for training"""
         from user_recommendation.training.train import LigthFMTrainer
 
-        self.trainer_cf = LigthFMTrainer(dataset=self.lightfm_dataset, no_components=self.config.get("no_components"))
-        self.trainer_hybrid = LigthFMTrainer(
-            dataset=self.lightfm_dataset, no_components=self.config.get("no_components")
+        self.trainer_cf = LigthFMTrainer(
+            dataset=self.lightfm_dataset,
+            no_components=self.config.get("no_components"),
+            random_state=self.random_state,
+            loss=self.config.get("loss"),
+            learning_rate=self.config.get("learning_rate"),
+            learning_schedule=self.config.get("learning_schedule"),
         )
-        self.next(self.train_model_cf)
-
-    @step
-    def train_model_cf(self) -> None:
-        """Train Ligth FM model"""
-
-        self.model_artifacts_cf = self.trainer_cf.fit(
-            train_interactions=self.training_interactions_weigths[0],
-            test_interactions=self.validation_interactions_weigths[0],
-            epochs=self.config.get("epochs"),
-            num_threads=self.config.get("num_threads"),
-            is_tracked=self.is_tracked,
-            show_plot=self.show_plot,
-            sample_weight=self.training_interactions_weigths[1],
+        self.trainer_hybrid = LigthFMTrainer(
+            dataset=self.lightfm_dataset,
+            no_components=self.config.get("no_components"),
+            random_state=self.random_state,
+            loss=self.config.get("loss"),
+            learning_rate=self.config.get("learning_rate"),
+            learning_schedule=self.config.get("learning_schedule"),
         )
         self.next(self.train_model_hybrid)
 
@@ -210,9 +200,22 @@ class TrainingModelFlow(FlowSpec):
             epochs=self.config.get("epochs"),
             num_threads=self.config.get("num_threads"),
             is_tracked=self.is_tracked,
-            show_plot=self.show_plot,
             user_features=self.questions_features,
             item_features=self.users_features,
+            sample_weight=self.training_interactions_weigths[1],
+        )
+        self.next(self.train_model_cf)
+
+    @step
+    def train_model_cf(self) -> None:
+        """Train Ligth FM model"""
+
+        self.model_artifacts_cf = self.trainer_cf.fit(
+            train_interactions=self.training_interactions_weigths[0],
+            test_interactions=self.validation_interactions_weigths[0],
+            epochs=self.config.get("epochs"),
+            num_threads=self.config.get("num_threads"),
+            is_tracked=self.is_tracked,
             sample_weight=self.training_interactions_weigths[1],
         )
         self.next(self.test_evaluation)
@@ -225,21 +228,25 @@ class TrainingModelFlow(FlowSpec):
         # Evaluate CF model
         model_cf = self.model_artifacts_cf[0]
         logger.info(f"Evaluate test set for CF model")
+
         self.test_auc_cf = model_cf.evaluation_step(
             test_interactions=self.test_interactions_weigths[0],
             func=auc_score,
             train_interactions=self.training_interactions_weigths[0],
+            num_threads=self.config.get("num_threads"),
         )
         logger.info(f"Test Model CF auc: {self.test_auc_cf}")
         # Evaluate Hybrid model
         model_hybrid = self.model_artifacts_hybrid[0]
         logger.info(f"Evaluate test set for Hybrid model")
+
         self.test_auc_hybrid = model_hybrid.evaluation_step(
             test_interactions=self.test_interactions_weigths[0],
             func=auc_score,
             train_interactions=self.training_interactions_weigths[0],
             user_features=self.questions_features,
             item_features=self.users_features,
+            num_threads=self.config.get("num_threads"),
         )
         logger.info(f"Test Model Hybrid auc: {self.test_auc_hybrid}")
         self.next(self.select_best_model)
@@ -250,9 +257,11 @@ class TrainingModelFlow(FlowSpec):
         if self.test_auc_cf >= self.test_auc_hybrid:
             self.best_model = self.model_artifacts_cf[0]
             logger.info("And the winner is: Collaborative Filtering Model!!!")
+            self.best_model_name = "cf"
         else:
             self.best_model = self.model_artifacts_hybrid[0]
             logger.info("And the winner is: Hybrid Model!!!")
+            self.best_model_name = "hybrid"
         self.next(self.test_prediction)
 
     @step
@@ -262,7 +271,7 @@ class TrainingModelFlow(FlowSpec):
 
         # Subsample questions to apply prediction
         subsample_questions = self._subsample_for_ranking(self.datasets.test, random_state=self.random_state, frac=0.01)
-        logger.info(f"{subsample_questions.size} will be predict")
+        logger.info(f"{subsample_questions.size} questions will be predict")
         # Iterate over all users will be too long for an example run. So we will randomly take a sample of users
         subsample_users_list = self.answers.drop_duplicates(subset="user_id").user_id.sample(n=10000).tolist()
         subsample_questions["user_id"] = [subsample_users_list for i in subsample_questions.index]
@@ -275,13 +284,20 @@ class TrainingModelFlow(FlowSpec):
         )[0]
 
         logger.info("Prediction is running")
-        self.ranked_predictions = self.best_model.predict_rank(
-            data=subsample_questions,
-            interactions=to_predict_interactions,
-            num_threads=self.config.get("num_threads"),
-            question_features=self.questions_features,
-            user_features=self.users_features,
-        )
+        if self.best_model_name == "hybrid":
+            self.ranked_predictions = self.best_model.predict_rank(
+                data=subsample_questions,
+                interactions=to_predict_interactions,
+                num_threads=self.config.get("num_threads"),
+                question_features=self.questions_features,
+                user_features=self.users_features,
+            )
+        elif self.best_model_name == "cf":
+            self.ranked_predictions = self.best_model.predict_rank(
+                data=subsample_questions,
+                interactions=to_predict_interactions,
+                num_threads=self.config.get("num_threads"),
+            )
         logger.info("Prediction Done")
         self.next(self.save_predictions)
 
@@ -299,29 +315,18 @@ class TrainingModelFlow(FlowSpec):
             index=False,
         )
         logger.info(f"Prediction saved at {path}")
-        self.next(self.generate_report)
-
-    @card(type='blank')
-    @step
-    def generate_report(self) -> None:
-        """Generate report with training informations"""
-        self.create_card()
-        logger.info(f"pathspec: {current.pathspec}")
         self.next(self.end)
 
+    @card
     @step
     def end(self) -> None:
-        """"""
-        pass
+        """Generate Training report\n
 
-    def create_card(self) -> None:
-        """Create card resuming all training models"""
+        Run:
+            > python user_recommendation/training_flow.py card view end
 
-        current.card.append(Markdown("# Training info  "))
-        current.card.append(Markdown(f"Run id {current.run_id}  "))
-        current.card.append(Markdown(f"Pathspec id {current.pathspec}  "))
-        current.card.append(Markdown("## Config  "))
-        current.card.append(Artifact(self.config))
+        At the end of the run to see the report
+        """
 
         current.card.append(Markdown("# Models Report  "))
         current.card.append(Markdown("## Test Set Results  "))

@@ -67,10 +67,9 @@ class LigthFMTrainer:
         num_threads: int = 1,
         is_tracked: bool = True,
         validation_metrics: Optional[list[str]] = None,
-        show_plot: bool = True,
         reset_state: bool = False,
         **kwargs: int,
-    ) -> Tuple[LightFM, Optional[pd.DataFrame], Optional[Plot]]:
+    ) -> Tuple[LightFM, Optional[pd.DataFrame]]:
         """Fit ligth fm model
 
         Args:
@@ -84,11 +83,28 @@ class LigthFMTrainer:
                         Defaults to True.
             show_plot: Should we plot metrics or not. Defaults to True.
             reset_state: If True, reset all parameters to fit from scratch
+
+        Returns:
+            Tuple[LightFM, Optional[pd.DataFrame]]: A tuple containing the fitted model
+                            and the monitoring of tracked metris if 'is_tracked=True'
+
         """
         if not is_tracked:
+            user_features = kwargs.get("user_features", None)
+            kwargs.pop("user_features", None)
+            item_features = kwargs.get("item_features", None)
+            kwargs.pop("item_features", None)
+            self._model.fit(
+                interactions=train_interactions,
+                epochs=epochs,
+                num_threads=num_threads,
+                verbose=True,
+                user_features=user_features,
+                item_features=item_features,
+                **kwargs,
+            )
             to_return = (
-                self._model.fit(interactions=train_interactions, epochs=epochs, num_threads=num_threads, **kwargs),
-                None,
+                self,
                 None,
             )
         else:
@@ -104,7 +120,6 @@ class LigthFMTrainer:
                 validation_metrics=validation_metrics,
                 epochs=epochs,
                 num_threads=num_threads,
-                show_plot=show_plot,
                 **kwargs,
             )
         return to_return
@@ -116,7 +131,6 @@ class LigthFMTrainer:
         validation_metrics: Optional[list[str]] = None,
         epochs: int = 1,
         num_threads: int = 1,
-        show_plot: bool = True,
         **kwargs: int,
     ) -> Tuple[LightFM, pd.DataFrame]:
         """Function to record model's performance at each epoch, formats the performance into tidy format,
@@ -168,10 +182,7 @@ class LigthFMTrainer:
         # replace the metric keys to improve visualisation
         metric_keys = {"precision": "Precision", "recall": "Recall", "auc": "ROC AUC"}
         model_track.metric.replace(metric_keys, inplace=True)
-        # plots the performance data
-        # plot = None
-        # if show_plot:
-        #     plot = self.model_perf_plots(model_track)
+
         return self, model_track
 
     def _loop_over_evaluation_metrics(

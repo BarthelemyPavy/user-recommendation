@@ -185,6 +185,8 @@ class TextProcessingFlow(FlowSpec):
         self.tags_columns = inputs.extract_users_keywords_tfidf.tags_columns
         self.extractor_tfidf_questions = inputs.extract_questions_keywords_tfidf.extractor_tfidf_questions
         self.extractor_tfidf_users = inputs.extract_users_keywords_tfidf.extractor_tfidf_users
+        self.questions_keywords_df = inputs.extract_questions_keywords_tfidf.questions_keywords_df
+        self.users_keywords_df = inputs.extract_users_keywords_tfidf.users_keywords_df
         self.merge_artifacts(
             inputs,
             include=[

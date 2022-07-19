@@ -12,15 +12,21 @@ USERS_NUM_COL: list[str] = ["reputation", "up_votes", "down_votes", "views"]
 
 
 def get_lightfm_dataset(
-    data: pd.DataFrame,
-    users: Optional[pd.DataFrame] = None,
-    questions: Optional[pd.DataFrame] = None,
+    users: pd.DataFrame,
+    questions: pd.DataFrame,
+    user_features: Optional[pd.DataFrame] = None,
+    question_features: Optional[pd.DataFrame] = None,
     tags_columns: Optional[list[str]] = None,
 ) -> Dataset:
     """Convert a pandas dataframe to lightfm Dataset
 
     Args:
-        data: all interactions between users and questions
+        users: Dataframe containing all user ids
+        questions: Dataframe containing all question ids
+        user_features: Dataframe containing user features
+        question_features: Dataframe containing question features
+        tags_columns: Name of columns extracted from text processing.
+                    Required if question_features is set passed
 
     Returns:
         Dataset: lightfm dataset
@@ -28,29 +34,33 @@ def get_lightfm_dataset(
     dataset = Dataset()
     logger.info("Building lightfm dataset")
     dataset.fit(
-        (question_id for question_id in data.question_id.tolist()), (user_id for user_id in data.user_id.tolist())
+        (question_id for question_id in questions.question_id.tolist()), (user_id for user_id in users.id.tolist())
     )
     num_question, num_user = dataset.interactions_shape()
     logger.info(f"Num question: {num_question}, num_user {num_user}.")
-    if isinstance(users, pd.DataFrame):
+    if isinstance(user_features, pd.DataFrame):
         columns = USERS_NUM_COL
         if tags_columns:
             columns += tags_columns
+        else:
+            logger.warning(
+                f"You will fit your dataset only on numerical columns for user features:\n {', '.join(columns)}"
+            )
         logger.info("Fit partial dataset for users features")
         dataset.fit_partial(
-            items=(users_id for users_id in users.id.tolist()),
-            item_features=(pd.unique(users[columns].values.ravel('K'))),
+            items=(users_id for users_id in user_features.id.tolist()),
+            item_features=(pd.unique(user_features[columns].values.ravel('K'))),
         )
-    if isinstance(questions, pd.DataFrame):
+    if isinstance(question_features, pd.DataFrame):
         if not tags_columns:
             log_raise(
-                logger=logger, err=ValueError("Arg tags_columns must be filled if questions features want to be used ")
+                logger=logger, err=ValueError("Arg tags_columns must be filled if question features want to be used ")
             )
         else:
             logger.info("Fit partial dataset for questions features")
             dataset.fit_partial(
-                users=(question_id for question_id in questions.question_id.tolist()),
-                user_features=(pd.unique(questions[tags_columns].values.ravel('K'))),
+                users=(question_id for question_id in question_features.question_id.tolist()),
+                user_features=(pd.unique(question_features[tags_columns].values.ravel('K'))),
             )
     return dataset
 

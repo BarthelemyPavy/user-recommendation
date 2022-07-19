@@ -6,17 +6,18 @@ data_split:
   # Rate between warm and cold data for test_val split, 0.7 means 70% of test_val data are cold start data
   split_cold_warm_size: !!float 0.5
 train_and_eval:
-  no_components: 64
+  no_components: 32
+  # Choose between warp or bpr
   loss: "warp"
   learning_rate: !!float 5e-2
-  schedule: "adagrad"
-  epochs: 2
-  num_threads: 1
+  learning_schedule: "adagrad"
+  epochs: 10
+  num_threads: 4
   k: 3
 text_processing:
   stop_words: "english"
   strip_accents: "unicode"
   # Choose between stemmer or lemmatizer
   stem: "stemmer"
-  nb_keywords: 3
+  nb_keywords: 5
   batch_size: 256
