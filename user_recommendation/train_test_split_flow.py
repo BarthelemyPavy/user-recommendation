@@ -70,7 +70,7 @@ class GenerateTrainTestValFlow(FlowSpec):
         if not self.all_exists:
             download_data()
         else:
-            logger.info("Files already downloads, this step is skipped")
+            logger.info("Files already downloaded, this step is skipped")
         self.next(self.read_data)
 
     @step

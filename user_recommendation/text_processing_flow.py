@@ -1,5 +1,6 @@
 """File where text processing Flow is defined"""
 from pathlib import Path
+from typing import Union
 from metaflow import FlowSpec, step, Parameter, metadata
 import numpy as np
 import numpy.typing as npt
@@ -20,7 +21,9 @@ class TextProcessingFlow(FlowSpec):
         - Extract keywords for questions.
     """
 
-    def _batch_tfidf(self, extractor: KeywordsExtractor, data_to_batch: list[str]) -> npt.NDArray[np.str_]:
+    def _batch_tfidf(
+        self, extractor: KeywordsExtractor, data_to_batch: list[str]
+    ) -> Union[pd.Series, npt.NDArray[np.str_], list[str]]:
         """Helper method to batch tfidf process in order to limit memory error
 
         Args:
@@ -76,7 +79,7 @@ class TextProcessingFlow(FlowSpec):
         if not self.all_exists:
             download_data()
         else:
-            logger.info("Files already downloads, this step is skipped")
+            logger.info("Files already downloaded, this step is skipped")
         self.next(self.read_data)
 
     @step
@@ -97,11 +100,11 @@ class TextProcessingFlow(FlowSpec):
             config = yaml.load(stream, Loader=None)
         self.config = config.get("text_processing")
         logger.info(f"Config parsed: {self.config}")
-        self.next(self.initialize_keywords_extractors_tfidf)
+        self.next(self.initialize_keywords_extractors)
 
     @step
-    def initialize_keywords_extractors_tfidf(self) -> None:
-        """Initialize tfidf keyword extractor for users and questions"""
+    def initialize_keywords_extractors(self) -> None:
+        """Initialize keyword extractor for users and questions"""
         from user_recommendation.data_preparation.text_processing.keywords_extraction import (
             KeywordsExtractor,
             EKeywordExtractorTag,
@@ -113,26 +116,31 @@ class TextProcessingFlow(FlowSpec):
         self.stem_enum: EStemTag = string_to_enum(
             self.config.get("stem"), EStemTag, InvalidTag, logger=logger
         )  # type:ignore
+        self.extractor_enum = string_to_enum(self.config.get("extractor"), EKeywordExtractorTag, InvalidTag, logger)
 
-        self.extractor_tfidf_users = KeywordsExtractor(
-            extraction_method=EKeywordExtractorTag.TFIDF,
+        self.extractor_users = KeywordsExtractor(
+            extraction_method=self.extractor_enum,  # type: ignore
             stop_words=self.config.get("stop_words"),
             strip_accents=self.config.get("strip_accents"),
             top_n=self.config.get("nb_keywords"),
             stem=self.stem_enum,  # type:ignore
         )
-        self.extractor_tfidf_questions = KeywordsExtractor(
-            extraction_method=EKeywordExtractorTag.TFIDF,
+        self.extractor_questions = KeywordsExtractor(
+            extraction_method=self.extractor_enum,  # type: ignore
             stop_words=self.config.get("stop_words"),
             strip_accents=self.config.get("strip_accents"),
             top_n=self.config.get("nb_keywords"),
             stem=self.stem_enum,  # type:ignore
         )
-        self.next(self.extract_users_keywords_tfidf, self.extract_questions_keywords_tfidf)
+        self.next(self.extract_users_keywords, self.extract_questions_keywords)
 
     @step
-    def extract_users_keywords_tfidf(self) -> None:
-        """Extract keywords from user textual data using tfidf"""
+    def extract_users_keywords(self) -> None:
+        """Extract keywords from user textual data"""
+        from user_recommendation.data_preparation.text_processing.keywords_extraction import (
+            EKeywordExtractorTag,
+        )
+
         # Get number of keywords to keep per doc
         nb_keywords = self.config.get("nb_keywords")
         # Generate column name based on number of keywords
@@ -143,11 +151,13 @@ class TextProcessingFlow(FlowSpec):
         users_invalid_about_me = self.users[self.users.about_me.isna()]
         data_to_process = users_valid_about_me.about_me.tolist()
 
-        # Fit tfidf extractor
-        self.extractor_tfidf_users.fit(data_to_process)
-
         logger.info("Start extracting keywords from users")
-        keywords = self._batch_tfidf(extractor=self.extractor_tfidf_users, data_to_batch=data_to_process)
+        if self.extractor_enum == EKeywordExtractorTag.TFIDF:
+            # Fit tfidf extractor
+            self.extractor_users.fit(data_to_process)
+            keywords = self._batch_tfidf(extractor=self.extractor_users, data_to_batch=data_to_process)
+        elif self.extractor_enum == EKeywordExtractorTag.KEYBERT:
+            keywords = self.extractor_users.transform(data=data_to_process, top_n=self.config.get("nb_keywords"))
         # Create df with 1 keywords = 1 column (per doc)
         keywords_df = pd.DataFrame(keywords, columns=self.tags_columns)
         # Associate each row containing keywords with corresponding user id
@@ -158,8 +168,12 @@ class TextProcessingFlow(FlowSpec):
         self.next(self.join)
 
     @step
-    def extract_questions_keywords_tfidf(self) -> None:
+    def extract_questions_keywords(self) -> None:
         """Extract keywords from question textual data using tfidf"""
+        from user_recommendation.data_preparation.text_processing.keywords_extraction import (
+            EKeywordExtractorTag,
+        )
+
         # Get number of keywords to keep per doc
         nb_keywords = self.config.get("nb_keywords")
         # Generate column name based on number of keywords
@@ -167,11 +181,14 @@ class TextProcessingFlow(FlowSpec):
 
         # Get data to process
         data_to_process = self.questions.title.tolist()
-        # Fit tfidf extractor
-        self.extractor_tfidf_questions.fit(data_to_process)
 
         logger.info("Start extracting keywords from questions")
-        keywords = self._batch_tfidf(extractor=self.extractor_tfidf_questions, data_to_batch=data_to_process)
+        if self.extractor_enum == EKeywordExtractorTag.TFIDF:
+            # Fit tfidf extractor
+            self.extractor_questions.fit(data_to_process)
+            keywords = self._batch_tfidf(extractor=self.extractor_questions, data_to_batch=data_to_process)
+        elif self.extractor_enum == EKeywordExtractorTag.KEYBERT:
+            keywords = self.extractor_questions.transform(data=data_to_process, top_n=self.config.get("nb_keywords"))
         # Create df with 1 keywords = 1 column (per doc)
         keywords_df = pd.DataFrame(keywords, columns=self.tags_columns)
         # Associate each row containing keywords with corresponding user id
@@ -182,18 +199,18 @@ class TextProcessingFlow(FlowSpec):
     @step
     def join(self, inputs) -> None:  # type: ignore
         """Merge data artifact"""
-        self.tags_columns = inputs.extract_users_keywords_tfidf.tags_columns
-        self.extractor_tfidf_questions = inputs.extract_questions_keywords_tfidf.extractor_tfidf_questions
-        self.extractor_tfidf_users = inputs.extract_users_keywords_tfidf.extractor_tfidf_users
-        self.questions_keywords_df = inputs.extract_questions_keywords_tfidf.questions_keywords_df
-        self.users_keywords_df = inputs.extract_users_keywords_tfidf.users_keywords_df
+        self.tags_columns = inputs.extract_users_keywords.tags_columns
+        self.extractor_questions = inputs.extract_questions_keywords.extractor_questions
+        self.extractor_users = inputs.extract_users_keywords.extractor_users
+        self.questions_keywords_df = inputs.extract_questions_keywords.questions_keywords_df
+        self.users_keywords_df = inputs.extract_users_keywords.users_keywords_df
         self.merge_artifacts(
             inputs,
             include=[
                 "tags_columns",
-                "extractor_tfidf_questions",
+                "extractor_questions",
                 "questions_keywords_df",
-                "extractor_tfidf_users",
+                "extractor_users",
                 "users_keywords_df",
             ],
         )

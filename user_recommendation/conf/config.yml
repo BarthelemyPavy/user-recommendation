@@ -19,5 +19,7 @@ text_processing:
   strip_accents: "unicode"
   # Choose between stemmer or lemmatizer
   stem: "stemmer"
+  # Choose between tfidf or keybert
+  extractor: "keybert"
   nb_keywords: 5
-  batch_size: 256
+  batch_size: 128

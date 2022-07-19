@@ -1,9 +1,8 @@
 """Here is defined the main class to use to keep relevant words from textual data"""
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Optional, Union
 import numpy as np
 import pandas as pd
-from functools import partial
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_is_fitted
@@ -73,7 +72,10 @@ class KeywordsExtractor:
             )
         elif extraction_method == EKeywordExtractorTag.KEYBERT:
             self._model = KeyBERTExtractor(kwargs.get("model")) if "model" in kwargs else KeyBERTExtractor()
-            self._keyphrase_vectorizer = KeyphraseCountVectorizer(pos_pattern="<N.*>", spacy_exclude=["parser", "ner"])
+            self._keyphrase_vectorizer = KeyphraseCountVectorizer(
+                pos_pattern="<N.*>",
+                spacy_exclude=["parser", "ner"],
+            )
         else:
             log_raise(
                 logger=logger,
@@ -93,22 +95,8 @@ class KeywordsExtractor:
             self._feature_array = self._model["vect"].get_feature_names_out()
         logger.info("Fit Done")
 
-    @staticmethod
-    def _partial_extract_keywords(  # type: ignore
-        model: KeyBERTExtractor, vectorizer: KeyphraseCountVectorizer
-    ) -> Callable[[Any], Any]:
-        """Only for KeyBERTExtractor model. Use partial from functools to pre fill extract_keywords method
-
-        Args:
-            vectorizer (KeyphraseCountVectorizer): _description_
-
-        Returns:
-            Callable[[Any], Any]: _description_
-        """
-        return partial(model, vectorizer=vectorizer)
-
     def transform(
-        self, data: Union[pd.Series, npt.NDArray[np.str_], list[str]], **kwargs: str
+        self, data: Union[str, list[str]], **kwargs: str
     ) -> Union[pd.Series, npt.NDArray[np.str_], list[str]]:
         """Take data to process in input and return best keywords as output
 
@@ -159,8 +147,7 @@ class KeywordsExtractor:
                     keywords = self._feature_array[self._model.transform(data)]
 
             elif isinstance(self._model, KeyBERTExtractor):
-                extract_keywords = self._partial_extract_keywords(self._model, self._keyphrase_vectorizer)
-                keywords = extract_keywords(data, **kwargs)
+                keywords = self._model.extract_keywords(docs=data, vectorizer=self._keyphrase_vectorizer)
         except Exception as error:
             log_raise(
                 logger=logger,
