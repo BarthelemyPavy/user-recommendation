@@ -41,6 +41,13 @@ class GenerateTrainTestValFlow(FlowSpec):
         default=1,
     )
 
+    reduce_dataset = Parameter(
+        "reduce_dataset",
+        help="expecting a float 0<x<=1 defining the rate of dataset to keep. This could be use for reduce the training time.",
+        default=0,
+        type=float,
+    )
+
     @step
     def start(self) -> None:
         "Check if input files are missing to trigger the download from google drive"
@@ -74,6 +81,13 @@ class GenerateTrainTestValFlow(FlowSpec):
         self.users = read_data("users.json", path=self.input_file_path)
         self.answers = read_data("answers.json", path=self.input_file_path)
         self.questions = read_data("questions.json", path=self.input_file_path)
+        if self.reduce_dataset > 0:
+            logger.warning(
+                f"""A reduce_dataset value is passed (={self.reduce_dataset}).
+                           This means that the dataset will be reduced by {(1-self.reduce_dataset)*100}%"""
+            )
+            self.answers = self.answers.sample(frac=self.reduce_dataset, random_state=self.random_state)
+            logger.info(f"New Training dataset shape: {self.answers.shape}")
         self.next(self.load_config)
 
     @step
