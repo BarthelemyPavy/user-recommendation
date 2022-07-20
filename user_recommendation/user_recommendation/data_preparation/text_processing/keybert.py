@@ -41,7 +41,7 @@ class KeyBERTExtractor(KeyBERT):
         self,
         docs: Union[str, List[str]],
         candidates: Optional[List[str]] = None,
-        keyphrase_ngram_range: Tuple[int, int] = ...,  # type: ignore
+        keyphrase_ngram_range: Tuple[int, int] = (1, 1),
         stop_words: Union[str, List[str]] = "english",
         top_n: int = 5,
         min_df: int = 1,
