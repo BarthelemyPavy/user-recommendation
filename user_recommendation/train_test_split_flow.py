@@ -87,7 +87,7 @@ class GenerateTrainTestValFlow(FlowSpec):
                            This means that the dataset will be reduced by {(1-self.reduce_dataset)*100}%"""
             )
             self.answers = self.answers.sample(frac=self.reduce_dataset, random_state=self.random_state)
-            logger.info(f"New Training dataset shape: {self.answers.shape}")
+            logger.info(f"New dataset shape: {self.answers.shape}")
         self.next(self.load_config)
 
     @step

@@ -37,6 +37,8 @@ I could also implement more solution to benchmark through the training flow. It 
 
 ## Orchestration
 
+Select the best model based on other metrics such as the run time in train and inference stages, used resources (CPU/GPU, RAM).
+
 Add more flexibility on my Flows using foreach operator on training step to have the choice to add more combination of training.
 
 Test Metaflow on a cloud with the UI.
