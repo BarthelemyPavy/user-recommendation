@@ -346,11 +346,10 @@ class TrainingModelFlow(FlowSpec):
         if self.is_tracked:
             current.card.append(Markdown("### Tracked Metrics "))
             current.card.append(Artifact(self.model_artifacts_cf[1]))
-            if self.show_plot:
-                current.card.append(Markdown("### Tracked Metrics Plot "))
-                current.card.append(
-                    Image.from_matplotlib(self.model_artifacts_cf[0].model_perf_plots(self.model_artifacts_cf[1]))
-                )
+            current.card.append(Markdown("### Tracked Metrics Plot "))
+            current.card.append(
+                Image.from_matplotlib(self.model_artifacts_cf[0].model_perf_plots(self.model_artifacts_cf[1]))
+            )
 
         # Hybrid model
         current.card.append(Markdown("## Hybrid Model  "))
@@ -360,13 +359,10 @@ class TrainingModelFlow(FlowSpec):
         if self.is_tracked:
             current.card.append(Markdown("### Tracked Metrics "))
             current.card.append(Artifact(self.model_artifacts_hybrid[1]))
-            if self.show_plot:
-                current.card.append(Markdown("### Tracked Metrics Plot "))
-                current.card.append(
-                    Image.from_matplotlib(
-                        self.model_artifacts_hybrid[0].model_perf_plots(self.model_artifacts_hybrid[1])
-                    )
-                )
+            current.card.append(Markdown("### Tracked Metrics Plot "))
+            current.card.append(
+                Image.from_matplotlib(self.model_artifacts_hybrid[0].model_perf_plots(self.model_artifacts_hybrid[1]))
+            )
 
 
 if __name__ == "__main__":
