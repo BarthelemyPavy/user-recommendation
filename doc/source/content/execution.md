@@ -3,10 +3,6 @@
 
 This project use Metaflow, a framework developed by Netflix to help data science project management.
 
-**Funny Fact:** Metaflow use Algolia for documentation search
-
-![Metaflow Search](algolia_search.png)
-
 ---
 **NOTE**
 
